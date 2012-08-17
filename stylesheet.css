@@ -1,0 +1,41 @@
+.bottom-panel {
+    color: white;
+	background: black;
+	font-size: 10.5pt;
+	height: 1.86em;
+	spacing: 6px;
+}
+
+.message-button {
+	min-width: 2.5em;
+	font-weight: normal;
+	color: white;
+}
+
+.message-button:hover {
+	font-weight: bold;
+	text-shadow: black 0px 2px 2px;
+}
+
+.window-list-box {
+	spacing: 6px;
+}
+
+.window-list-item-box {
+	spacing: 3px;
+	border-radius: 4px;
+	border-width: 1px;
+	border-color: white;
+	color: #bbb;
+	padding: 0px 2px;
+}
+
+.window-list-item-box:focused {
+	color: white;
+	background: #282828;
+}
+
+.window-list-item-label {
+	font-weight: bold;
+	width: 15em;
+}

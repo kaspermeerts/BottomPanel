@@ -1,0 +1,7 @@
+{
+	"shell-version": ["3.2"],
+	"uuid": "Bottom_Panel@kaspermeerts.gmail.com",
+	"name": "Bottom Panel",
+	"description": "Add a bottom panel with a window list to the shell",
+	"url": "https://github.com/kmmeerts/BottomPanel"
+}
