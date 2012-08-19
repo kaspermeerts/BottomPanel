@@ -15,6 +15,47 @@ const St = imports.gi.St;
 const Main = imports.ui.main;
 const MessageTray = imports.ui.messageTray;
 
+function MessageButton() {
+	this._init();
+}
+
+MessageButton.prototype = {
+	_init: function() {
+		this.actor = new St.Button({name: 'messageButton',
+		                            style_class: 'message-button',
+		                            reactive: true});
+		this.setText();
+		this.actorAddedId = Main.messageTray._summary.connect('actor-added',
+		        Lang.bind(this, this.setText));
+		this.actorRemovedId = Main.messageTray._summary.connect('actor-removed',
+		        Lang.bind(this, this.setText));
+		this.actor.connect('clicked', Lang.bind(this, this._onClicked));
+		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
+	},
+
+	setText: function () {
+		if (Main.messageTray._summary.get_children().length == 0)
+			this.actor.set_label(' ');
+		else
+			this.actor.set_label('!');
+	},
+
+	_onClicked: function () {
+		Main.messageTray.toggleState();
+	},
+
+	_onDestroy: function () {
+		if (this.actorAddedId)
+			Main.messageTray._summary.disconnect(this.actorAddedId);
+		if (this.actorRemovedId)
+			Main.messageTray._summary.disconnect(this.actorRemovedId);
+	}
+}
+
+function WindowList() {
+	this._init();
+}
+
 function WindowListItem(app, metaWindow) {
 	this._init(app, metaWindow);
 }
@@ -99,52 +140,10 @@ WindowListItem.prototype = {
 	},
 }
 
-function MessageButton() {
-	this._init();
-}
-
-MessageButton.prototype = {
-	_init: function() {
-		this.actor = new St.Button({name: 'messageButton',
-		                            style_class: 'message-button',
-		                            reactive: true});
-		this.setText();
-		this.actorAddedId = Main.messageTray._summary.connect('actor-added',
-		        Lang.bind(this, this.setText));
-		this.actorRemovedId = Main.messageTray._summary.connect('actor-removed',
-		        Lang.bind(this, this.setText));
-		this.actor.connect('clicked', Lang.bind(this, this._onClicked));
-		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
-	},
-
-	setText: function () {
-		if (Main.messageTray._summary.get_children().length == 0)
-			this.actor.set_label(' ');
-		else
-			this.actor.set_label('!');
-	},
-
-	_onClicked: function () {
-		Main.messageTray.toggleState();
-	},
-
-	_onDestroy: function () {
-		if (this.actorAddedId)
-			Main.messageTray._summary.disconnect(this.actorAddedId);
-		if (this.actorRemovedId)
-			Main.messageTray._summary.disconnect(this.actorRemovedId);
-	}
-}
-
-function WindowList() {
-	this._init();
-}
-
 WindowList.prototype = {
 	_init: function () {
-		this._workspaces = [];
-		this._changeWorkspaces();
-		// A list of `WindowListItem`s
+		this._windowAddedId = 0;
+		this._windowRemovedId = 0;
 		this._windows = [];
 
 		this.actor = new St.BoxLayout({name: 'windowList',
@@ -161,29 +160,23 @@ WindowList.prototype = {
 		let wm = global.window_manager;
 		wm.connect('minimize', Lang.bind(this, this._onMinimize));
 		wm.connect('map', Lang.bind(this, this._onMap));
-		wm.connect('switch-workspace', Lang.bind(this, this._reloadItems));
-		global.screen.connect('notify::n-workspaces',
-		                      Lang.bind(this, this._changeWorkspaces));
+		wm.connect('switch-workspace', Lang.bind(this, this._onSwitchWorkspace));
 
-		this._reloadItems();
+		this._onSwitchWorkspace();
 	},
 
-	_changeWorkspaces: function () {
-		for (let i in this._workspaces) {
-			let ws = this._workspaces[i];
-			ws.disconnect(ws._windowAddedId);
-			ws.disconnect(ws._windowRemovedId);
-		}
+	_onSwitchWorkspace: function () {
+		let ws = global.screen.get_active_workspace();
+		if (this._windowAddedId)
+			ws.disconnect(this._windowAddedId);
+		if (this._windowRemovedId)
+			ws.disconnect(this._windowRemovedId);
 
-		this._workSpaces = [];
-		for (let i = 0; i < global.screen.n_workspaces; i++) {
-			let ws = global.screen.get_workspace_by_index(i);
-			this._workspaces[i] = ws;
-			ws._windowAddedId = ws.connect('window-added',
-			                        Lang.bind(this, this._windowAdded));
-			ws._windowAddedId = ws.connect('window-removed',
-			                        Lang.bind(this, this._windowRemoved));
-		}
+		this._windowAddedId = ws.connect('window-added',
+		        Lang.bind(this, this._windowAdded));
+		this._windowRemovedId = ws.connect('window-removed',
+		        Lang.bind(this, this._windowRemoved));
+		this._reloadItems();
 	},
 
 	_windowAdded: function (metaWorkspace, metaWindow) {
@@ -210,7 +203,7 @@ WindowList.prototype = {
 
 	// I delegate all signals to their respective windows here.
 	// The `focus` signal is trickier since no defocus signal is emitted
-	// I just give warn every window and let them figure it out themselves
+	// I just warn every window and let them figure it out themselves
 	// Bug in Mutter!
 	_onFocus: function () {
 		for (let i in this._windows) {
