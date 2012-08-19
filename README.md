@@ -18,6 +18,8 @@ Future plans include:
 
 + Tooltips
 
++ Autohide
+
 Screenshot
 ---
 ![Screenshot](https://github.com/kmmeerts/BottomPanel/raw/master/screenshot.png)

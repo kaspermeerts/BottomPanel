@@ -2,6 +2,8 @@
 // Copyright (C) 2012 Kasper Maurice Meerts
 // License: GPLv2+
 // Based on the extension made by R.M. Yorston
+// Many inspiration gotten from the extensions by gcampax and
+// Mathematical Coffee
 
 "use strict";
 
@@ -74,11 +76,21 @@ WindowListItem.prototype = {
 	},
 
 	// Public methods
-	doMinimize: this._onTitleChanged,
 
-	doMap: this._onTitleChanged,
+	// I would just point this to _onTitleChanged. However, while the window is
+	// minimizing, it's not technically minimized yet and thus the title would
+	// be inaccurate.
+	onMinimize: function () {
+		this._label.set_text('[' + this.metaWindow.title + ']');
+		this._icon.set_opacity(64);
+	},
 
-	doFocus: function () {
+	onMap: function () {
+		this._label.set_text(      this.metaWindow.title      );
+		this._icon.set_opacity(255);
+	},
+
+	onFocus: function () {
 		if (this.metaWindow.has_focus()) {
 			this._itemBox.add_style_pseudo_class('focused');
 		} else {
@@ -196,21 +208,20 @@ WindowList.prototype = {
 		}
 	},
 
-	/* When an arbitrary window gets focus, the appearance of the buttons is
-	 * changed. I'd rather plug into the `focus` or `raise` signal, but then
-	 * I wouldn't know what the previously focused window was. By diving into
-	 * the mutter code, it is clear that a signal is only emitted on focus
-	 * and not on defocus. Bullshit. XXX */
+	// I delegate all signals to their respective windows here.
+	// The `focus` signal is trickier since no defocus signal is emitted
+	// I just give warn every window and let them figure it out themselves
+	// Bug in Mutter!
 	_onFocus: function () {
 		for (let i in this._windows) {
-			this._windows[i].doFocus();
+			this._windows[i].onFocus();
 		}
 	},
 
 	_onMinimize: function (shellwm, actor) {
 		for (let i in this._windows) {
-			if (this._windows[i] == actor.get_meta_window()) {
-				this._windows[i].doMinimize();
+			if (this._windows[i].metaWindow == actor.get_meta_window()) {
+				this._windows[i].onMinimize();
 				return;
 			}
 		}
@@ -218,8 +229,8 @@ WindowList.prototype = {
 
 	_onMap: function (shellwm, actor) {
 		for (let i in this._windows) {
-			if (this._windows[i] == actor.get_meta_window()) {
-				this._windows[i].doMap();
+			if (this._windows[i].metaWindow == actor.get_meta_window()) {
+				this._windows[i].onMap();
 				return;
 			}
 		}
@@ -252,7 +263,6 @@ WindowList.prototype = {
 	},
 
 	_addWindow: function (metaWindow) {
-		// The WindowTracker maintains a mapping between windows and apps
 		let tracker = Shell.WindowTracker.get_default();
 		// Interesting windows exclude stuff like docks, desktop, etc...
 		if (!metaWindow || !tracker.is_window_interesting(metaWindow))
@@ -321,6 +331,7 @@ BottomPanel.prototype = {
 let bottomPanel = null;
 let myShowTray, origShowTray;
 let myHideTray, origHideTray;
+let myToggleState, origToggleState;
 
 function init(extensionMeta) {
 	// For some fucked up reason, the (x,y) coordinates here are relative to
@@ -348,9 +359,12 @@ function init(extensionMeta) {
 					});
 	};
 
+	// ToggleState is not defined at the moment, but it doesn't hurt to be
+	// futureproof.
+	origToggleState = MessageTray.MessageTray.prototype.toggleState;
 	// I'll be honest, I don't really know what's going on here.
 	// The code in messageTray.js is an absolute mess!
-	MessageTray.MessageTray.prototype.toggleState = function() {
+	myToggleState = function() {
 		if (this._summaryState == MessageTray.State.SHOWN ||
 		    this._summaryState == MessageTray.State.SHOWING)
 			this._pointerInSummary = false;
@@ -365,6 +379,7 @@ function init(extensionMeta) {
 function enable() {
 	MessageTray.MessageTray.prototype._showTray = myShowTray;
 	MessageTray.MessageTray.prototype._hideTray = myHideTray;
+	MessageTray.MessageTray.prototype.toggleState = myToggleState;
 
 	Main.layoutManager.addChrome(bottomPanel.actor, {affectsStruts: true});
 	bottomPanel.relayout();
@@ -373,6 +388,7 @@ function enable() {
 function disable() {
 	MessageTray.MessageTray.prototype._showTray = origShowTray;
 	MessageTray.MessageTray.prototype._hideTray = origHideTray;
+	MessageTray.MessageTray.prototype.toggleState = origToggleState;
 
 	Main.layoutManager.removeChrome(bottomPanel.actor);
 }
