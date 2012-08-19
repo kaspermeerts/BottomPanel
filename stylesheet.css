@@ -1,6 +1,7 @@
 .bottom-panel {
     color: white;
 	background: black;
+	border-image: url("bottom-panel-border.svg") 1;
 	font-size: 10.5pt;
 	height: 1.86em;
 	spacing: 6px;
