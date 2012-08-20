@@ -171,22 +171,20 @@ WindowList.prototype = {
 		// Start by disconnecting all signals from the old workspace
 		let ws = this._ws.workspace; // Shortcut
 
-		global.log("Reloading all items");
 		if (this._ws._windowAddedId)
 			ws.disconnect(this._ws._windowAddedId);
 
 		if (this._ws._windowRemovedId)
 			ws.disconnect(this._ws._windowRemovedId);
 
+		// Now connect the new signals
 		this._ws.workspace = global.screen.get_active_workspace();
 		let ws = this._ws.workspace; // Shortcut
 
-		global.log("Reloading all items");
 		this._ws._windowAddedId = ws.connect('window-added',
 		        Lang.bind(this, this._windowAdded));
 		this._ws._windowRemovedId = ws.connect('window-removed',
 		        Lang.bind(this, this._windowRemoved));
-		global.log("Reloading all items");
 		this._reloadItems();
 	},
 
