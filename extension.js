@@ -75,8 +75,8 @@ WindowListItem.prototype = {
 		this.actor._delegate = this;
 
 		/* Application icon */
-		this.icon = app.create_icon_texture(16);
-		this._itemBox.add(this.icon,  {x_fill: false, y_fill: false});
+		this._icon = app.create_icon_texture(16);
+		this._itemBox.add(this._icon,  {x_fill: false, y_fill: false});
 
 		/* Application name */
 		this._label = new St.Label({style_class: 'window-list-item-label'});
@@ -142,8 +142,8 @@ WindowListItem.prototype = {
 
 WindowList.prototype = {
 	_init: function () {
-		this._windowAddedId = 0;
-		this._windowRemovedId = 0;
+		this._ws = {workspace: undefined, _windowAddedId: 0,
+		                                  _windowRemovedId: 0};
 		this._windows = [];
 
 		this.actor = new St.BoxLayout({name: 'windowList',
@@ -162,20 +162,31 @@ WindowList.prototype = {
 		wm.connect('map', Lang.bind(this, this._onMap));
 		wm.connect('switch-workspace', Lang.bind(this, this._onSwitchWorkspace));
 
+		global.screen.connect('notify::n-workspaces',
+		        Lang.bind(this, this._onSwitchWorkspace));
 		this._onSwitchWorkspace();
 	},
 
 	_onSwitchWorkspace: function () {
-		let ws = global.screen.get_active_workspace();
-		if (this._windowAddedId)
-			ws.disconnect(this._windowAddedId);
-		if (this._windowRemovedId)
-			ws.disconnect(this._windowRemovedId);
+		// Start by disconnecting all signals from the old workspace
+		let ws = this._ws.workspace; // Shortcut
 
-		this._windowAddedId = ws.connect('window-added',
+		global.log("Reloading all items");
+		if (this._ws._windowAddedId)
+			ws.disconnect(this._ws._windowAddedId);
+
+		if (this._ws._windowRemovedId)
+			ws.disconnect(this._ws._windowRemovedId);
+
+		this._ws.workspace = global.screen.get_active_workspace();
+		let ws = this._ws.workspace; // Shortcut
+
+		global.log("Reloading all items");
+		this._ws._windowAddedId = ws.connect('window-added',
 		        Lang.bind(this, this._windowAdded));
-		this._windowRemovedId = ws.connect('window-removed',
+		this._ws._windowRemovedId = ws.connect('window-removed',
 		        Lang.bind(this, this._windowRemoved));
+		global.log("Reloading all items");
 		this._reloadItems();
 	},
 
