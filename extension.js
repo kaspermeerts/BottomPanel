@@ -14,6 +14,34 @@ const St = imports.gi.St;
 
 const Main = imports.ui.main;
 const MessageTray = imports.ui.messageTray;
+const PopupMenu = imports.ui.popupMenu;
+
+const WINDOW_OPTION_TYPES = {
+	BUTTON: "Button",
+	SWITCH: "Switch",
+	SEPARATOR: "Separator",
+};
+
+const WINDOW_OPTIONS = {
+	MINIMIZE:       {name: "Minimize",      type: WINDOW_OPTION_TYPES.BUTTON},
+	RESTORE:        {name: "Restore",       type: WINDOW_OPTION_TYPES.BUTTON},
+	MAXIMIZE:       {name: "Maximize",      type: WINDOW_OPTION_TYPES.BUTTON},
+	CLOSE:          {name: "Close",         type: WINDOW_OPTION_TYPES.BUTTON},
+	ALWAYS_ON_TOP:  {name: "Always on top", type: WINDOW_OPTION_TYPES.SWITCH},
+	SEPARATOR:      {name: "Separator",     type: WINDOW_OPTION_TYPES.SEPARATOR}
+};
+
+const WINDOW_OPTIONS_MENU = [
+	WINDOW_OPTIONS.MINIMIZE,
+	WINDOW_OPTIONS.RESTORE,
+	WINDOW_OPTIONS.MAXIMIZE,
+	WINDOW_OPTIONS.SEPARATOR,
+	WINDOW_OPTIONS.ALWAYS_ON_TOP,
+	WINDOW_OPTIONS.SEPARATOR,
+	WINDOW_OPTIONS.CLOSE
+];
+
+let bottomPanel = null;
 
 function MessageButton() {
 	this._init();
@@ -50,11 +78,65 @@ MessageButton.prototype = {
 		if (this.actorRemovedId)
 			Main.messageTray._summary.disconnect(this.actorRemovedId);
 	}
+};
+
+function WindowOptionsMenu(item) {
+	this._init(item);
 }
 
-function WindowList() {
-	this._init();
-}
+WindowOptionsMenu.prototype = {
+	__proto__: PopupMenu.PopupMenu.prototype,
+
+	_init: function (windowlistitem) {
+		this._window = windowlistitem;
+		PopupMenu.PopupMenu.prototype._init.call(this, this._window.actor, 0.0,
+		        St.Side.BOTTOM);
+
+		this._fillMenu();
+	},
+
+	_fillMenu: function () {
+		for (i in WINDOW_OPTIONS_MENU) {
+			let item = WINDOW_OPTIONS_MENU[i];
+			let menu_item;
+			switch (item.type) {
+			case WINDOW_OPTION_TYPES.BUTTON:
+				menu_item = new PopupMenu.PopupMenuItem(item.name);
+				menu_item.connect('activate',
+				        Lang.bind(this, this._onActivate,
+						          item.name, this._window.metaWindow));
+				break;
+			case WINDOW_OPTION_TYPES.SWITCH:
+				menu_item = new PopupMenu.PopupSwitchMenuItem(item.name);
+				menu_item.connect('toggled',
+				        Lang.bind(this, this._onActivate,
+						          item.name, this._window.metaWindow));
+				break;
+			case WINDOW_OPTION_TYPES.SEPARATOR:
+				menu_item = new PopupMenu.PopupSeparatorMenuItem(item.name);
+				break;
+			default:
+				global.log("Unknown WINDOW_OPTIONS_MENU item: " +
+				        WINDOW_OPTIONS_MENU[i]);
+				// XXX: Abort everthing?
+				return;
+				break;
+			}
+			this.addMenuItem(menu_item);
+		}
+	},
+
+	_onActivate: function(menu_item, event, buttonName, window) {
+		switch(buttonName) {
+		case WINDOW_OPTIONS.MINIMIZE.name:
+			window.minimize(global.get_current_time());
+			break;
+		default:
+			global.log("Unknown WINDOW_OPTIONS name: " + buttonName);
+			break;
+		}
+	}
+};
 
 function WindowListItem(app, metaWindow) {
 	this._init(app, metaWindow);
@@ -62,17 +144,25 @@ function WindowListItem(app, metaWindow) {
 
 WindowListItem.prototype = {
 	_init: function (metaWindow) {
-		this.metaWindow = metaWindow;
-
+		// Shortcut
 		let tracker = Shell.WindowTracker.get_default();
 		let app = tracker.get_window_app(metaWindow);
 
+		this.metaWindow = metaWindow;
 		/* A `WindowListItem` is actored by an StBoxLayout which envelops
 		 * an StLabel and a ClutterTexture */
 		this._itemBox = new St.BoxLayout({style_class: 'window-list-item-box',
 		                                  reactive: 'true'});
 		this.actor = this._itemBox;
 		this.actor._delegate = this;
+
+		// XXX REMOVE THIS TO ENABLE MENU
+		/*
+		this._menu = new WindowOptionsMenu(this);
+		Main.uiGroup.add_actor(this._menu.actor);
+		this._menu.actor.hide();
+		bottomPanel.menus.addMenu(this._menu);
+		*/
 
 		/* Application icon */
 		this._icon = app.create_icon_texture(16);
@@ -105,15 +195,21 @@ WindowListItem.prototype = {
 		// The actor is getting destroyed soon, no need to disconnect his
 		// signals
 		this.metaWindow.disconnect(this._notifyTitleId);
+		this._menu.destroy();
 	},
 
 	_onButtonPress: function (actor, event) {
+		let but = event.get_button();
+		if (but == 1) {
 			// The timestamp is necessary for window activation, so outdated 
 			// requests can be ignored. This isn't necessary for minimization
 			if (this.metaWindow.has_focus())
 				this.metaWindow.minimize(global.get_current_time());
 			else
 				this.metaWindow.activate(global.get_current_time());
+		} else if (but == 3) {
+			this._menu.toggle();
+		}
 	},
 
 	// Public methods
@@ -138,6 +234,10 @@ WindowListItem.prototype = {
 			this._itemBox.remove_style_pseudo_class('focused');
 		}
 	},
+};
+
+function WindowList() {
+	this._init();
 }
 
 WindowList.prototype = {
@@ -294,7 +394,7 @@ WindowList.prototype = {
 		// To highlight the currently focused window
 		this._onFocus();
 	}
-}
+};
 
 function BottomPanel() {
 	this._init();
@@ -313,6 +413,8 @@ BottomPanel.prototype = {
 		this._messageButton = new MessageButton();
 		this.actor.add(this._messageButton.actor);
 
+		this.menus = new PopupMenu.PopupMenuManager(this);
+
 		// Signals
 		this.actor.connect('style-changed', Lang.bind(this, this.relayout));
 		global.screen.connect('monitors-changed', Lang.bind(this,
@@ -328,9 +430,8 @@ BottomPanel.prototype = {
 		this.actor.set_position(prim.x, prim.y + prim.height - h);
 		this.actor.set_size(prim.width, -1);
 	}
-}
+};
 
-let bottomPanel = null;
 let myShowTray, origShowTray;
 let myHideTray, origHideTray;
 let myToggleState, origToggleState;
