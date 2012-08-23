@@ -62,7 +62,7 @@ MessageButton.prototype = {
 	},
 
 	setText: function () {
-		if (Main.messageTray._summary.get_children().length == 0)
+		if (Main.messageTray._summary.get_children().length === 0)
 			this.actor.set_label(' ');
 		else
 			this.actor.set_label('!');
@@ -96,7 +96,7 @@ WindowOptionsMenu.prototype = {
 	},
 
 	_fillMenu: function () {
-		for (i in WINDOW_OPTIONS_MENU) {
+		for (let i in WINDOW_OPTIONS_MENU) {
 			let item = WINDOW_OPTIONS_MENU[i];
 			let menu_item;
 			switch (item.type) {
@@ -200,14 +200,14 @@ WindowListItem.prototype = {
 
 	_onButtonPress: function (actor, event) {
 		let but = event.get_button();
-		if (but == 1) {
+		if (but === 1) {
 			// The timestamp is necessary for window activation, so outdated 
 			// requests can be ignored. This isn't necessary for minimization
 			if (this.metaWindow.has_focus())
 				this.metaWindow.minimize(global.get_current_time());
 			else
 				this.metaWindow.activate(global.get_current_time());
-		} else if (but == 3) {
+		} else if (but === 3) {
 			this._menu.toggle();
 		}
 	},
@@ -289,19 +289,19 @@ WindowList.prototype = {
 	},
 
 	_windowAdded: function (metaWorkspace, metaWindow) {
-		if (metaWorkspace.index() != global.screen.get_active_workspace_index())
+		if (metaWorkspace.index() !== global.screen.get_active_workspace_index())
 			return;
 
 		this._addWindow(metaWindow)
 	},
 
 	_windowRemoved: function (metaWorkspace, metaWindow) {
-		if (metaWorkspace.index() != global.screen.get_active_workspace_index())
+		if (metaWorkspace.index() !== global.screen.get_active_workspace_index())
 			return;
 
 		for (let i in this._windows) {
 			let w = this._windows[i];
-			if (w.metaWindow == metaWindow) {
+			if (w.metaWindow === metaWindow) {
 				this.actor.remove_actor(w.actor);
 				w.actor.destroy();
 				this._windows.splice(i, 1);
@@ -322,7 +322,7 @@ WindowList.prototype = {
 
 	_onMinimize: function (shellwm, actor) {
 		for (let i in this._windows) {
-			if (this._windows[i].metaWindow == actor.get_meta_window()) {
+			if (this._windows[i].metaWindow === actor.get_meta_window()) {
 				this._windows[i].onMinimize();
 				return;
 			}
@@ -331,7 +331,7 @@ WindowList.prototype = {
 
 	_onMap: function (shellwm, actor) {
 		for (let i in this._windows) {
-			if (this._windows[i].metaWindow == actor.get_meta_window()) {
+			if (this._windows[i].metaWindow === actor.get_meta_window()) {
 				this._windows[i].onMap();
 				return;
 			}
@@ -340,7 +340,7 @@ WindowList.prototype = {
 
 	_onScrollEvent: function (actor, event) {
 		let diff = 0;
-		if (event.get_scroll_direction() == Clutter.ScrollDirection.DOWN)
+		if (event.get_scroll_direction() === Clutter.ScrollDirection.DOWN)
 			diff = 1;
 		else
 			diff = -1;
@@ -352,7 +352,7 @@ WindowList.prototype = {
 		for (let i = 0; i < ws.length; i++)
 			if (ws[i].metaWindow.has_focus())
 				focus_i = i;
-		if (focus_i == -1)
+		if (focus_i === -1)
 			return;
 
 		let new_i = focus_i + diff;
@@ -468,8 +468,8 @@ function init(extensionMeta) {
 	// I'll be honest, I don't really know what's going on here.
 	// The code in messageTray.js is an absolute mess!
 	myToggleState = function() {
-		if (this._summaryState == MessageTray.State.SHOWN ||
-		    this._summaryState == MessageTray.State.SHOWING)
+		if (this._summaryState === MessageTray.State.SHOWN ||
+		    this._summaryState === MessageTray.State.SHOWING)
 			this._pointerInSummary = false;
 		else
 			this._pointerInSummary = true;
