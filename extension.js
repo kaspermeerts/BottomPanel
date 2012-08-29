@@ -9,6 +9,7 @@
 
 const Clutter = imports.gi.Clutter;
 const Lang = imports.lang;
+const Meta = imports.gi.Meta;
 const Shell = imports.gi.Shell;
 const St = imports.gi.St;
 
@@ -19,7 +20,7 @@ const PopupMenu = imports.ui.popupMenu;
 const WINDOW_OPTION_TYPES = {
 	BUTTON: "Button",
 	SWITCH: "Switch",
-	SEPARATOR: "Separator",
+	SEPARATOR: "Separator"
 };
 
 const WINDOW_OPTIONS = {
@@ -28,6 +29,13 @@ const WINDOW_OPTIONS = {
 	MAXIMIZE:       {name: "Maximize",      type: WINDOW_OPTION_TYPES.BUTTON},
 	CLOSE:          {name: "Close",         type: WINDOW_OPTION_TYPES.BUTTON},
 	ALWAYS_ON_TOP:  {name: "Always on top", type: WINDOW_OPTION_TYPES.SWITCH},
+	ALWAYS_ON_WORKSPACE:
+	                {name: "Always on visible workspace",
+					                        type: WINDOW_OPTION_TYPES.SWITCH},
+	PREV_WORKSPACE: {name: "Move to previous workspace",
+	                                        type: WINDOW_OPTION_TYPES.BUTTON},
+	NEXT_WORKSPACE: {name: "Move to next workspace",
+	                                        type: WINDOW_OPTION_TYPES.BUTTON},
 	SEPARATOR:      {name: "Separator",     type: WINDOW_OPTION_TYPES.SEPARATOR}
 };
 
@@ -36,8 +44,12 @@ const WINDOW_OPTIONS_MENU = [
 	WINDOW_OPTIONS.RESTORE,
 	WINDOW_OPTIONS.MAXIMIZE,
 	WINDOW_OPTIONS.SEPARATOR,
-	WINDOW_OPTIONS.ALWAYS_ON_TOP,
+	WINDOW_OPTIONS.PREV_WORKSPACE,
+	WINDOW_OPTIONS.NEXT_WORKSPACE,
 	WINDOW_OPTIONS.SEPARATOR,
+/*	WINDOW_OPTIONS.ALWAYS_ON_TOP,
+	WINDOW_OPTIONS.ALWAYS_ON_WORKSPACE,
+	WINDOW_OPTIONS.SEPARATOR,*/
 	WINDOW_OPTIONS.CLOSE
 ];
 
@@ -88,6 +100,7 @@ WindowOptionsMenu.prototype = {
 	__proto__: PopupMenu.PopupMenu.prototype,
 
 	_init: function (windowlistitem) {
+		this._items = [];
 		this._window = windowlistitem;
 		PopupMenu.PopupMenu.prototype._init.call(this, this._window.actor, 0.0,
 		        St.Side.BOTTOM);
@@ -97,42 +110,80 @@ WindowOptionsMenu.prototype = {
 
 	_fillMenu: function () {
 		for (let i in WINDOW_OPTIONS_MENU) {
-			let item = WINDOW_OPTIONS_MENU[i];
+			let option = WINDOW_OPTIONS_MENU[i];
 			let menu_item;
-			switch (item.type) {
+			switch (option.type) {
 			case WINDOW_OPTION_TYPES.BUTTON:
-				menu_item = new PopupMenu.PopupMenuItem(item.name);
+				menu_item = new PopupMenu.PopupMenuItem(option.name);
 				menu_item.connect('activate',
 				        Lang.bind(this, this._onActivate,
-						          item.name, this._window.metaWindow));
+						          option, this._window.metaWindow));
 				break;
 			case WINDOW_OPTION_TYPES.SWITCH:
-				menu_item = new PopupMenu.PopupSwitchMenuItem(item.name);
+				menu_item = new PopupMenu.PopupSwitchMenuItem(option.name);
 				menu_item.connect('toggled',
 				        Lang.bind(this, this._onActivate,
-						          item.name, this._window.metaWindow));
+						          option, this._window.metaWindow));
 				break;
 			case WINDOW_OPTION_TYPES.SEPARATOR:
-				menu_item = new PopupMenu.PopupSeparatorMenuItem(item.name);
+				menu_item = new PopupMenu.PopupSeparatorMenuItem(option.name);
 				break;
 			default:
-				global.log("Unknown WINDOW_OPTIONS_MENU item: " +
+				global.log("Unknown WINDOW_OPTIONS_MENU option: " +
 				        WINDOW_OPTIONS_MENU[i]);
 				// XXX: Abort everthing?
 				return;
 				break;
 			}
+			/* Some special cases */
+			if (option === WINDOW_OPTIONS.PREV_WORKSPACE)
+				if (global.screen.get_active_workspace_index() === 0)
+					menu_item.setSensitive(false);
+			if (option === WINDOW_OPTIONS.NEXT_WORKSPACE)
+				if (global.screen.get_active_workspace_index() === global.screen.n_workspaces)
+					menu_item.setSensitive(false);
+
+			this._items[i] = menu_item;
 			this.addMenuItem(menu_item);
 		}
 	},
 
-	_onActivate: function(menu_item, event, buttonName, window) {
-		switch(buttonName) {
-		case WINDOW_OPTIONS.MINIMIZE.name:
-			window.minimize(global.get_current_time());
+	_onActivate: function(menu_item, event, option, metaWindow) {
+		switch(option) {
+		case WINDOW_OPTIONS.MINIMIZE:
+			metaWindow.minimize();
+			break;
+		case WINDOW_OPTIONS.RESTORE:
+			metaWindow.unmaximize(
+			    Meta.MaximizeFlags.HORIZONTAL | Meta.MaximizeFlags.VERTICAL);
+			break;
+		case WINDOW_OPTIONS.MAXIMIZE:
+			metaWindow.maximize(
+			    Meta.MaximizeFlags.HORIZONTAL | Meta.MaximizeFlags.VERTICAL);
+			break;
+		case WINDOW_OPTIONS.ALWAYS_ON_TOP:
+		case WINDOW_OPTIONS.ALWAYS_ON_WORKSPACE:
+			global.log("Not yet implemented function: " + option.name);
+			break;
+		case WINDOW_OPTIONS.PREV_WORKSPACE:
+			metaWindow.change_workspace_by_index(
+			        metaWindow.get_workspace().index() - 1,
+					false,
+					global.get_current_time());
+			break;
+		case WINDOW_OPTIONS.NEXT_WORKSPACE:
+			metaWindow.change_workspace_by_index(
+			        metaWindow.get_workspace().index() + 1,
+					false,
+					global.get_current_time());
+			break;
+		case WINDOW_OPTIONS.CLOSE:
+			let tracker = Shell.WindowTracker.get_default();
+			let app = tracker.get_window_app(metaWindow);
+			app.request_quit();
 			break;
 		default:
-			global.log("Unknown WINDOW_OPTIONS name: " + buttonName);
+			global.log("Unknown WINDOW_OPTIONS option: " + option.name);
 			break;
 		}
 	}
@@ -156,13 +207,10 @@ WindowListItem.prototype = {
 		this.actor = this._itemBox;
 		this.actor._delegate = this;
 
-		// XXX REMOVE THIS TO ENABLE MENU
-		/*
 		this._menu = new WindowOptionsMenu(this);
 		Main.uiGroup.add_actor(this._menu.actor);
 		this._menu.actor.hide();
 		bottomPanel.menus.addMenu(this._menu);
-		*/
 
 		/* Application icon */
 		this._icon = app.create_icon_texture(16);
@@ -201,10 +249,11 @@ WindowListItem.prototype = {
 	_onButtonPress: function (actor, event) {
 		let but = event.get_button();
 		if (but === 1) {
+			this._menu.close();
 			// The timestamp is necessary for window activation, so outdated 
 			// requests can be ignored. This isn't necessary for minimization
 			if (this.metaWindow.has_focus())
-				this.metaWindow.minimize(global.get_current_time());
+				this.metaWindow.minimize();
 			else
 				this.metaWindow.activate(global.get_current_time());
 		} else if (but === 3) {
