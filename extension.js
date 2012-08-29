@@ -2,8 +2,8 @@
 // Copyright (C) 2012 Kasper Maurice Meerts
 // License: GPLv2+
 // Based on the extension made by R.M. Yorston
-// Many inspiration gotten from the extensions by gcampax and
-// Mathematical Coffee
+// Many inspiration gotten from the extensions by
+// gcampax and Mathematical Coffee
 
 "use strict";
 
@@ -27,7 +27,8 @@ const WINDOW_OPTIONS = {
 	MINIMIZE:       {name: "Minimize",      type: WINDOW_OPTION_TYPES.BUTTON},
 	RESTORE:        {name: "Restore",       type: WINDOW_OPTION_TYPES.BUTTON},
 	MAXIMIZE:       {name: "Maximize",      type: WINDOW_OPTION_TYPES.BUTTON},
-	CLOSE:          {name: "Close",         type: WINDOW_OPTION_TYPES.BUTTON},
+	CLOSE:          {name: "Close window",  type: WINDOW_OPTION_TYPES.BUTTON},
+	QUIT:           {name: "Quit %s",      type: WINDOW_OPTION_TYPES.BUTTON},
 	ALWAYS_ON_TOP:  {name: "Always on top", type: WINDOW_OPTION_TYPES.SWITCH},
 	ALWAYS_ON_WORKSPACE:
 	                {name: "Always on visible workspace",
@@ -50,7 +51,8 @@ const WINDOW_OPTIONS_MENU = [
 /*	WINDOW_OPTIONS.ALWAYS_ON_TOP,
 	WINDOW_OPTIONS.ALWAYS_ON_WORKSPACE,
 	WINDOW_OPTIONS.SEPARATOR,*/
-	WINDOW_OPTIONS.CLOSE
+	WINDOW_OPTIONS.CLOSE,
+	WINDOW_OPTIONS.QUIT
 ];
 
 let bottomPanel = null;
@@ -112,21 +114,22 @@ WindowOptionsMenu.prototype = {
 		for (let i in WINDOW_OPTIONS_MENU) {
 			let option = WINDOW_OPTIONS_MENU[i];
 			let menu_item;
+			let item_name = option.name.format(this._window.appName);
 			switch (option.type) {
 			case WINDOW_OPTION_TYPES.BUTTON:
-				menu_item = new PopupMenu.PopupMenuItem(option.name);
+				menu_item = new PopupMenu.PopupMenuItem(item_name);
 				menu_item.connect('activate',
 				        Lang.bind(this, this._onActivate,
 						          option, this._window.metaWindow));
 				break;
 			case WINDOW_OPTION_TYPES.SWITCH:
-				menu_item = new PopupMenu.PopupSwitchMenuItem(option.name);
+				menu_item = new PopupMenu.PopupSwitchMenuItem(item_name);
 				menu_item.connect('toggled',
 				        Lang.bind(this, this._onActivate,
 						          option, this._window.metaWindow));
 				break;
 			case WINDOW_OPTION_TYPES.SEPARATOR:
-				menu_item = new PopupMenu.PopupSeparatorMenuItem(option.name);
+				menu_item = new PopupMenu.PopupSeparatorMenuItem(item_name);
 				break;
 			default:
 				global.log("Unknown WINDOW_OPTIONS_MENU option: " +
@@ -178,6 +181,9 @@ WindowOptionsMenu.prototype = {
 					global.get_current_time());
 			break;
 		case WINDOW_OPTIONS.CLOSE:
+			metaWindow.delete(global.get_current_time());
+			break;
+		case WINDOW_OPTIONS.QUIT:
 			let tracker = Shell.WindowTracker.get_default();
 			let app = tracker.get_window_app(metaWindow);
 			app.request_quit();
@@ -199,6 +205,7 @@ WindowListItem.prototype = {
 		let tracker = Shell.WindowTracker.get_default();
 		let app = tracker.get_window_app(metaWindow);
 
+		this.appName = app.get_name();
 		this.metaWindow = metaWindow;
 		/* A `WindowListItem` is actored by an StBoxLayout which envelops
 		 * an StLabel and a ClutterTexture */
