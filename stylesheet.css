@@ -39,4 +39,7 @@
 .window-list-item-label {
 	font-weight: bold;
 	width: 15em;
+	/* This makes the layout fluid, i.e. window-list-items will become
+	 * smaller when space runs out instead of falling of the screen */
+	min-width: 5px;
 }
