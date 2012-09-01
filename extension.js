@@ -28,7 +28,7 @@ const WINDOW_OPTIONS = {
 	RESTORE:        {name: "Restore",       type: WINDOW_OPTION_TYPES.BUTTON},
 	MAXIMIZE:       {name: "Maximize",      type: WINDOW_OPTION_TYPES.BUTTON},
 	CLOSE:          {name: "Close window",  type: WINDOW_OPTION_TYPES.BUTTON},
-	QUIT:           {name: "Quit %s",      type: WINDOW_OPTION_TYPES.BUTTON},
+	QUIT:           {name: "Quit %s",       type: WINDOW_OPTION_TYPES.BUTTON},
 	ALWAYS_ON_TOP:  {name: "Always on top", type: WINDOW_OPTION_TYPES.SWITCH},
 	ALWAYS_ON_WORKSPACE:
 	                {name: "Always on visible workspace",
@@ -195,8 +195,8 @@ WindowOptionsMenu.prototype = {
 	}
 };
 
-function WindowListItem(app, metaWindow) {
-	this._init(app, metaWindow);
+function WindowListItem(metaWindow) {
+	this._init(metaWindow);
 }
 
 WindowListItem.prototype = {
@@ -217,7 +217,6 @@ WindowListItem.prototype = {
 		this._menu = new WindowOptionsMenu(this);
 		Main.uiGroup.add_actor(this._menu.actor);
 		this._menu.actor.hide();
-		bottomPanel.menus.addMenu(this._menu);
 
 		/* Application icon */
 		this._icon = app.create_icon_texture(16);
@@ -292,12 +291,13 @@ WindowListItem.prototype = {
 	},
 };
 
-function WindowList() {
-	this._init();
+function WindowList(panel) {
+	this._init(panel);
 }
 
 WindowList.prototype = {
-	_init: function () {
+	_init: function (panel) {
+		this._panel = panel;
 		this._ws = {workspace: undefined, _windowAddedId: 0,
 		                                  _windowRemovedId: 0};
 		this._windows = [];
@@ -431,6 +431,7 @@ WindowList.prototype = {
 		let item = new WindowListItem(metaWindow);
 		this._windows.push(item);
 		this.actor.add(item.actor);
+		this._panel.menus.addMenu(item._menu);
 	},
 
 	_reloadItems: function () {
@@ -458,18 +459,18 @@ function BottomPanel() {
 
 BottomPanel.prototype = {
 	_init: function () {
+		this.menus = new PopupMenu.PopupMenuManager(this);
+
 		// Layout
 		this.actor = new St.BoxLayout({style_class: 'bottom-panel',
 		                               name: 'bottomPanel'});
 		this.actor._delegate = this;
 
-		this._windowList = new WindowList();
+		this._windowList = new WindowList(this);
 		this.actor.add(this._windowList.actor, {expand: true});
 
 		this._messageButton = new MessageButton();
 		this.actor.add(this._messageButton.actor);
-
-		this.menus = new PopupMenu.PopupMenuManager(this);
 
 		// Signals
 		this.actor.connect('style-changed', Lang.bind(this, this.relayout));
@@ -531,14 +532,14 @@ function init(extensionMeta) {
 			this._pointerInSummary = true;
 		this._updateState();
 	};
-
-	bottomPanel = new BottomPanel();
 }
 
 function enable() {
 	MessageTray.MessageTray.prototype._showTray = myShowTray;
 	MessageTray.MessageTray.prototype._hideTray = myHideTray;
 	MessageTray.MessageTray.prototype.toggleState = myToggleState;
+
+	bottomPanel = new BottomPanel();
 
 	Main.layoutManager.addChrome(bottomPanel.actor, {affectsStruts: true});
 	bottomPanel.relayout();
@@ -550,4 +551,6 @@ function disable() {
 	MessageTray.MessageTray.prototype.toggleState = origToggleState;
 
 	Main.layoutManager.removeChrome(bottomPanel.actor);
+	bottomPanel.actor.destroy();
+	bottomPanel = null;
 }
