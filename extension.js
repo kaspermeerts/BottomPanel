@@ -67,9 +67,10 @@ MessageButton.prototype = {
 		                            style_class: 'message-button',
 		                            reactive: true});
 		this.setText();
-		this.actorAddedId = Main.messageTray._summary.connect('actor-added',
+		this._summary = Main.messageTray._summary;
+		this._ID_actor_added   = this._summary.connect('actor-added',
 		        Lang.bind(this, this.setText));
-		this.actorRemovedId = Main.messageTray._summary.connect('actor-removed',
+		this._ID_actor_removed = this._summary.connect('actor-removed',
 		        Lang.bind(this, this.setText));
 		this.actor.connect('clicked', Lang.bind(this, this._onClicked));
 		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
@@ -87,10 +88,10 @@ MessageButton.prototype = {
 	},
 
 	_onDestroy: function () {
-		if (this.actorAddedId)
-			Main.messageTray._summary.disconnect(this.actorAddedId);
-		if (this.actorRemovedId)
-			Main.messageTray._summary.disconnect(this.actorRemovedId);
+		if (this._ID_actor_added)
+			this._summary.disconnect(this._ID_actor_added);
+		if (this._ID_actor_removed)
+			this._summary.disconnect(this._ID_actor_removed);
 	}
 };
 
@@ -232,7 +233,7 @@ WindowListItem.prototype = {
 		this.actor.connect('button-press-event',
 		                           Lang.bind(this, this._onButtonPress));
 
-		this._notifyTitleId = metaWindow.connect('notify::title',
+		this._ID_notify_title = this.metaWindow.connect('notify::title',
 		                      Lang.bind(this, this._onTitleChanged));
 	},
 
@@ -248,7 +249,7 @@ WindowListItem.prototype = {
 	_onDestroy: function () {
 		// The actor is getting destroyed soon, no need to disconnect his
 		// signals
-		this.metaWindow.disconnect(this._notifyTitleId);
+		this.metaWindow.disconnect(this._ID_notify_title);
 		this._menu.destroy();
 	},
 
@@ -298,8 +299,8 @@ function WindowList(panel) {
 WindowList.prototype = {
 	_init: function (panel) {
 		this._panel = panel;
-		this._ws = {workspace: undefined, _windowAddedId: 0,
-		                                  _windowRemovedId: 0};
+		this._ws = {workspace: undefined, _ID_window_added: 0,
+		                                  _ID_window_removed: 0};
 		this._windows = [];
 
 		this.actor = new St.BoxLayout({name: 'windowList',
@@ -308,38 +309,69 @@ WindowList.prototype = {
 		this.actor._delegate = this;
 
 		// Signals
-		this.actor.connect('scroll-event', Lang.bind(this, this._onScrollEvent));
+		this.actor.connect('destroy',
+		        Lang.bind(this, this._onDestroy));
+		this.actor.connect('scroll-event',
+		        Lang.bind(this, this._onScrollEvent));
 
 		let tracker = Shell.WindowTracker.get_default();
-		tracker.connect('notify::focus-app', Lang.bind(this, this._onFocus));
+		this._ID_tracker_notify = tracker.connect('notify::focus-app',
+		        Lang.bind(this, this._onFocus));
 
 		let wm = global.window_manager;
-		wm.connect('minimize', Lang.bind(this, this._onMinimize));
-		wm.connect('map', Lang.bind(this, this._onMap));
-		wm.connect('switch-workspace', Lang.bind(this, this._onSwitchWorkspace));
+		this._ID_minimize = wm.connect('minimize',
+		        Lang.bind(this, this._onMinimize));
+		this._ID_map = wm.connect('map',
+		        Lang.bind(this, this._onMap));
+		this._ID_switch_workspace = wm.connect('switch-workspace',
+		        Lang.bind(this, this._onSwitchWorkspace));
 
-		global.screen.connect('notify::n-workspaces',
+		this._ID_screen_notify = global.screen.connect('notify::n-workspaces',
 		        Lang.bind(this, this._onSwitchWorkspace));
 		this._onSwitchWorkspace();
+	},
+
+	_onDestroy: function () {
+		let tracker = Shell.WindowTracker.get_default();
+		if (this._ID_tracker_notify)
+			tracker.disconnect(this._ID_tracker_notify);
+
+		let screen = global.screen;
+		if (this._ID_screen_notify)
+			screen.disconnect(this._ID_screen_notify);
+
+		let wm = global.window_manager;
+		if (this._ID_minimize)
+			wm.disconnect(this._ID_minimize);
+		if (this._ID_map)
+			wm.disconnect(this._ID_map);
+		if (this._ID_switch_workspace)
+			wm.disconnect(this._ID_switch_workspace);
+
+		let ws = this._ws.workspace;
+		if (this._ws._ID_window_added)
+			ws.disconnect(this._ws._ID_window_added);
+		if (this._ws._ID_window_removed)
+			ws.disconnect(this._ws._ID_window_removed);
 	},
 
 	_onSwitchWorkspace: function () {
 		// Start by disconnecting all signals from the old workspace
 		let ws = this._ws.workspace; // Shortcut
 
-		if (this._ws._windowAddedId)
-			ws.disconnect(this._ws._windowAddedId);
+		if (this._ws._ID_window_added)
+			ws.disconnect(this._ws._ID_window_added);
 
-		if (this._ws._windowRemovedId)
-			ws.disconnect(this._ws._windowRemovedId);
+		if (this._ws._ID_window_removed)
+			ws.disconnect(this._ws._ID_window_removed);
 
 		// Now connect the new signals
 		this._ws.workspace = global.screen.get_active_workspace();
 		let ws = this._ws.workspace; // Shortcut
 
-		this._ws._windowAddedId = ws.connect('window-added',
+		this._ws._ID_window_added = ws.connect('window-added',
 		        Lang.bind(this, this._windowAdded));
-		this._ws._windowRemovedId = ws.connect('window-removed',
+		this._ws._ID_window_removed = ws.connect('window-removed',
 		        Lang.bind(this, this._windowRemoved));
 		this._reloadItems();
 	},
@@ -473,9 +505,10 @@ BottomPanel.prototype = {
 		this.actor.add(this._messageButton.actor);
 
 		// Signals
+		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
 		this.actor.connect('style-changed', Lang.bind(this, this.relayout));
-		global.screen.connect('monitors-changed', Lang.bind(this,
-		                                                    this.relayout));
+		this._ID_monitors_changed = global.screen.connect(
+		        'monitors-changed', Lang.bind(this, this.relayout));
 	},
 
 	relayout: function () {
@@ -486,6 +519,11 @@ BottomPanel.prototype = {
 		 * like a real panel. */
 		this.actor.set_position(prim.x, prim.y + prim.height - h);
 		this.actor.set_size(prim.width, -1);
+	},
+
+	_onDestroy : function () {
+		if (this._ID_monitors_changed)
+			global.screen.disconnect(this._ID_monitors_changed);
 	}
 };
 
