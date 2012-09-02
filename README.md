@@ -5,16 +5,26 @@ Overview
 ---
 
 This is an extension for GNOME Shell 3.2 that adds a bottom panel to the shell.
-The bottom panel includes a task bar and a button to show/hide the tray.
 
-This code was heavily based on [the GNOME Shell Frippery project](http://intgat.tigress.co.uk/rmy/extensions/index.html) by Ron Yorston. Some parts were removed, like the workspace switcher, and I have added my own work, like switching windows by scrolling.
+This code was based on [the GNOME Shell Frippery project](http://intgat.tigress.co.uk/rmy/extensions/index.html) by Ron Yorston.
+
+Features:
+---
+
++ Task bar with window list
+
++ Message button to show/hide the messagetray
+
++ Switch windows by scrolling
+
++ Window options on right-click
 
 Future plans include:
 ---
 
-+ Window options on right-click
-
 + Dragging and dropping windows
+
++ Grouping windows of the same application
 
 + Tooltips
 
