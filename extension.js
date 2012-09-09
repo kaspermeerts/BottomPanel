@@ -467,7 +467,7 @@ WindowList.prototype = {
 	},
 
 	_reloadItems: function () {
-		this.actor.destroy_children();
+		this.actor.destroy_all_children();
 		this._windows = [];
 
 		let metaWorkspace = global.screen.get_active_workspace();
