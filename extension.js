@@ -392,8 +392,10 @@ WindowList.prototype = {
 		let diff = 0;
 		if (event.get_scroll_direction() === Clutter.ScrollDirection.DOWN)
 			diff = 1;
-		else
+		else if (event.get_scroll_direction() === Clutter.ScrollDirection.UP)
 			diff = -1;
+		else
+			return;
 
 		let ws = this._windows;
 		let focus_i = -1;
