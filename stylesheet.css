@@ -7,17 +7,6 @@
 	spacing: 6px;
 }
 
-.message-button {
-	min-width: 2.5em;
-	font-weight: normal;
-	color: white;
-}
-
-.message-button:hover {
-	font-weight: bold;
-	text-shadow: black 0px 2px 2px;
-}
-
 .window-list-box {
 	spacing: 6px;
 }

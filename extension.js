@@ -57,44 +57,6 @@ const WINDOW_OPTIONS_MENU = [
 
 let bottomPanel = null;
 
-function MessageButton() {
-	this._init();
-}
-
-MessageButton.prototype = {
-	_init: function() {
-		this.actor = new St.Button({name: 'messageButton',
-		                            style_class: 'message-button',
-		                            reactive: true});
-		this.setText();
-		this._summary = Main.messageTray._summary;
-		this._ID_actor_added   = this._summary.connect('actor-added',
-		        Lang.bind(this, this.setText));
-		this._ID_actor_removed = this._summary.connect('actor-removed',
-		        Lang.bind(this, this.setText));
-		this.actor.connect('clicked', Lang.bind(this, this._onClicked));
-		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
-	},
-
-	setText: function () {
-		if (Main.messageTray._summary.get_children().length === 0)
-			this.actor.set_label(' ');
-		else
-			this.actor.set_label('!');
-	},
-
-	_onClicked: function () {
-		Main.messageTray.toggleState();
-	},
-
-	_onDestroy: function () {
-		if (this._ID_actor_added)
-			this._summary.disconnect(this._ID_actor_added);
-		if (this._ID_actor_removed)
-			this._summary.disconnect(this._ID_actor_removed);
-	}
-};
-
 function WindowOptionsMenu(item) {
 	this._init(item);
 }
@@ -500,9 +462,6 @@ BottomPanel.prototype = {
 
 		this._windowList = new WindowList(this);
 		this.actor.add(this._windowList.actor, {expand: true});
-
-		this._messageButton = new MessageButton();
-		this.actor.add(this._messageButton.actor);
 
 		// Signals
 		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
