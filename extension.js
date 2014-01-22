@@ -455,12 +455,13 @@ function BottomPanel() {
 
 BottomPanel.prototype = {
 	_init: function () {
-		this.menus = new PopupMenu.PopupMenuManager(this);
-
 		// Layout
 		this.actor = new St.BoxLayout({style_class: 'bottom-panel',
 		                               name: 'bottomPanel'});
 		this.actor._delegate = this;
+
+		// PopupMenuManager needs this.actor to be defined
+		this.menus = new PopupMenu.PopupMenuManager(this);
 
 		this._windowList = new WindowList(this);
 		this.actor.add(this._windowList.actor, {expand: true});
@@ -470,6 +471,10 @@ BottomPanel.prototype = {
 		this.actor.connect('style-changed', Lang.bind(this, this.relayout));
 		this._ID_monitors_changed = global.screen.connect(
 		        'monitors-changed', Lang.bind(this, this.relayout));
+		this._ID_overview_show = Main.overview.connect('showing',
+				Lang.bind(this, this._showOverview));
+		this._ID_overview_hide = Main.overview.connect('hidden',
+				Lang.bind(this,this._hideOverview));
 	},
 
 	relayout: function () {
@@ -482,7 +487,15 @@ BottomPanel.prototype = {
 		this.actor.set_size(prim.width, -1);
 	},
 
-	_onDestroy : function () {
+	_showOverview: function() {
+		this.actor.hide();
+	},
+
+	_hideOverview: function() {
+		this.actor.show();
+	},
+
+	_onDestroy: function () {
 		if (this._ID_monitors_changed)
 			global.screen.disconnect(this._ID_monitors_changed);
 	}
@@ -490,6 +503,8 @@ BottomPanel.prototype = {
 
 let myShowTray, origShowTray;
 let myHideTray, origHideTray;
+let myUpdateShowingNotification, origUpdateShowingNotification;
+let myOnNotificationExpanded, origOnNotificationExpanded;
 let myToggleState, origToggleState;
 
 function init(extensionMeta) {
@@ -500,23 +515,87 @@ function init(extensionMeta) {
 	// The first `MessageTray` is the namespace, the second is the actual Object
 	origShowTray = MessageTray.MessageTray.prototype._showTray;
 	myShowTray = function() {
+		if (!this._grabHelper.grab({ actor: this.actor,
+		                             modal: true,
+									 onUngrab: Lang.bind(this, this._escapeTray) })) {
+			this._traySummoned = false;
+			return false;
+		}
+
+		this.emit('showing');
 		let h = bottomPanel.actor.get_theme_node().get_height();
 		this._tween(this.actor, '_trayState', MessageTray.State.SHOWN,
 		            { y: -this.actor.height - h,
 					  time: MessageTray.ANIMATION_TIME,
 					  transition: 'easeOutQuad'
 					});
+
+		this._lightbox.show();
+
+		return true;
 	};
 
 	origHideTray = MessageTray.MessageTray.prototype._hideTray;
 	myHideTray = function() {
+		this._summaryBoxPointer.actor.hide();
+
+		this.emit('hiding');
 		let h = bottomPanel.actor.get_theme_node().get_height();
 		this._tween(this.actor, '_trayState', MessageTray.State.HIDDEN,
-		            { y: this.actor.height,
+		            { y: -h,
 					  time: MessageTray.ANIMATION_TIME,
 					  transition: 'easeOutQuad'
 					});
+
+		this._grabHelper.ungrab({actor: this.actor});
+		this._lightbox.hide();
 	};
+
+	origUpdateShowingNotification =
+		MessageTray.MessageTray.prototype._updateShowingNotification;
+	myUpdateShowingNotification = function() {
+		this._notification.acknowledged = true;
+
+		if (this._notification.urgency === MessageTray.Urgency.CRITICAL)
+			this._expandNotification(true);
+
+		let tweenParams = { opacity: 255,
+		                    time: MessageTray.ANIMATION_TIME,
+		                    transition: 'easeOutQuad',
+		                    onComplete: this._showNotificationCompleted,
+		                    onCompleteScope: this
+		                  };
+		if (!this._notification.expanded) {
+			let h = bottomPanel.actor.get_theme_node().get_height();
+			tweenParams.y = -this._notificationWidget.height - h;
+		}
+
+		this._tween(this._notificationWidget, '_notificationState',
+				MessageTray.State.SHOWN, tweenParams);
+	};
+
+    origOnNotificationExpanded =
+        MessageTray.MessageTray.prototype._onNotificationExpanded;
+    myOnNotificationExpanded = function() {
+        let h = bottomPanel.actor.get_theme_node().get_height();
+        let expandedY = - this._notificationWidget.height - h;
+        // Using the close button causes a segfault when the tray is next
+        // invoked.  So don't display the close button.
+        //this._closeButton.show();
+
+        // Don't animate the notification to its new position if it has shrunk:
+        // there will be a very visible "gap" that breaks the illusion.
+        if (this._notificationWidget.y < expandedY) {
+            this._notificationWidget.y = expandedY;
+        } else if (this._notification.y != expandedY) {
+            this._tween(this._notificationWidget, '_notificationState', MessageTray.State.SHOWN,
+                        { y: expandedY,
+                          opacity: 255,
+                          time: MessageTray.ANIMATION_TIME,
+                          transition: 'easeOutQuad'
+                        });
+        }
+    };
 
 	// ToggleState is not defined at the moment, but it doesn't hurt to be
 	// futureproof.
@@ -524,11 +603,14 @@ function init(extensionMeta) {
 	// I'll be honest, I don't really know what's going on here.
 	// The code in messageTray.js is an absolute mess!
 	myToggleState = function() {
-		if (this._summaryState === MessageTray.State.SHOWN ||
-		    this._summaryState === MessageTray.State.SHOWING)
+		if (this._summaryState === MessageTray.State.SHOWN) {
 			this._pointerInSummary = false;
-		else
+			this._traySummoned = false;
+		}
+		else {
 			this._pointerInSummary = true;
+			this._traySummoned = true;
+		}
 		this._updateState();
 	};
 }
@@ -537,10 +619,14 @@ function enable() {
 	MessageTray.MessageTray.prototype._showTray = myShowTray;
 	MessageTray.MessageTray.prototype._hideTray = myHideTray;
 	MessageTray.MessageTray.prototype.toggleState = myToggleState;
+    MessageTray.MessageTray.prototype._updateShowingNotification =
+        myUpdateShowingNotification;
+    MessageTray.MessageTray.prototype._onNotificationExpanded =
+        myOnNotificationExpanded;
 
 	bottomPanel = new BottomPanel();
 
-	Main.layoutManager.addChrome(bottomPanel.actor, {affectsStruts: true});
+	Main.layoutManager.addChrome(bottomPanel.actor, {affectsStruts: true, trackFullscreen: true});
 	bottomPanel.relayout();
 }
 
@@ -548,6 +634,10 @@ function disable() {
 	MessageTray.MessageTray.prototype._showTray = origShowTray;
 	MessageTray.MessageTray.prototype._hideTray = origHideTray;
 	MessageTray.MessageTray.prototype.toggleState = origToggleState;
+    MessageTray.MessageTray.prototype._updateShowingNotification =
+        origUpdateShowingNotification;
+    MessageTray.MessageTray.prototype._onNotificationExpanded =
+        origOnNotificationExpanded;
 
 	Main.layoutManager.removeChrome(bottomPanel.actor);
 	bottomPanel.actor.destroy();
