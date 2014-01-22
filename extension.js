@@ -524,6 +524,7 @@ function init(extensionMeta) {
 
 		this.emit('showing');
 		let h = bottomPanel.actor.get_theme_node().get_height();
+		this.actor.y = -h;
 		this._tween(this.actor, '_trayState', MessageTray.State.SHOWN,
 		            { y: -this.actor.height - h,
 					  time: MessageTray.ANIMATION_TIME,
@@ -544,7 +545,9 @@ function init(extensionMeta) {
 		this._tween(this.actor, '_trayState', MessageTray.State.HIDDEN,
 		            { y: -h,
 					  time: MessageTray.ANIMATION_TIME,
-					  transition: 'easeOutQuad'
+					  transition: 'easeOutQuad',
+					  onComplete: function(){this.actor.y = 0},
+					  onCompleteScope: this,
 					});
 
 		this._grabHelper.ungrab({actor: this.actor});
