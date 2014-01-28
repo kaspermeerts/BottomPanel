@@ -62,10 +62,9 @@ const WindowOptionsMenu = new Lang.Class({
 	Extends: PopupMenu.PopupMenu,
 
 	_init: function (windowlistitem) {
+		this.parent(windowlistitem.actor, 0.0, St.Side.BOTTOM);
 		this._items = [];
 		this._window = windowlistitem;
-		PopupMenu.PopupMenu.prototype._init.call(this, this._window.actor, 0.0,
-		        St.Side.BOTTOM);
 
 		this._fillMenu();
 	},
