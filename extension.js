@@ -57,12 +57,9 @@ const WINDOW_OPTIONS_MENU = [
 
 let bottomPanel = null;
 
-function WindowOptionsMenu(item) {
-	this._init(item);
-}
-
-WindowOptionsMenu.prototype = {
-	__proto__: PopupMenu.PopupMenu.prototype,
+const WindowOptionsMenu = new Lang.Class({
+	Name: "WindowOptionsMenu",
+	Extends: PopupMenu.PopupMenu,
 
 	_init: function (windowlistitem) {
 		this._items = [];
@@ -156,13 +153,11 @@ WindowOptionsMenu.prototype = {
 			break;
 		}
 	}
-};
+});
 
-function WindowListItem(metaWindow) {
-	this._init(metaWindow);
-}
+const WindowListItem = new Lang.Class({
+	Name: "WindowListItem",
 
-WindowListItem.prototype = {
 	_init: function (metaWindow) {
 		// Shortcut
 		let tracker = Shell.WindowTracker.get_default();
@@ -252,13 +247,11 @@ WindowListItem.prototype = {
 			this._itemBox.remove_style_pseudo_class('focused');
 		}
 	},
-};
+});
 
-function WindowList(panel) {
-	this._init(panel);
-}
+const WindowList = new Lang.Class({
+	Name: "WindowList",
 
-WindowList.prototype = {
 	_init: function (panel) {
 		this._panel = panel;
 		this._ws = {workspace: undefined, _ID_window_added: 0,
@@ -447,13 +440,11 @@ WindowList.prototype = {
 		// To highlight the currently focused window
 		this._onFocus();
 	}
-};
+});
 
-function BottomPanel() {
-	this._init();
-}
+const BottomPanel = new Lang.Class({
+	Name: "BottomPanel",
 
-BottomPanel.prototype = {
 	_init: function () {
 		// Layout
 		this.actor = new St.BoxLayout({style_class: 'bottom-panel',
@@ -499,7 +490,7 @@ BottomPanel.prototype = {
 		if (this._ID_monitors_changed)
 			global.screen.disconnect(this._ID_monitors_changed);
 	}
-};
+});
 
 let myShowTray, origShowTray;
 let myHideTray, origHideTray;
