@@ -187,7 +187,9 @@ const WindowListItem = new Lang.Class({
 		/* Signals */
 		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
 		this.actor.connect('button-press-event',
-		                           Lang.bind(this, this._onButtonPress));
+		        Lang.bind(this, this._onButtonPress));
+		this.actor.connect('allocation-changed',
+		        Lang.bind(this, this._onAllocationChanged));
 
 		this._ID_notify_title =
 		        this.metaWindow.connect('notify::title',
@@ -201,6 +203,7 @@ const WindowListItem = new Lang.Class({
 	},
 
 	_onDestroy: function () {
+		this.metaWindow.set_icon_geometry(null);
 		this.metaWindow.disconnect(this._ID_notify_title);
 		this.metaWindow.disconnect(this._ID_notify_minimize);
 		global.display.disconnect( this._ID_notify_focus);
@@ -218,6 +221,15 @@ const WindowListItem = new Lang.Class({
 		} else if (but === 3) {
 			this._menu.toggle();
 		}
+	},
+
+	_onAllocationChanged: function () {
+		let rect = new Meta.Rectangle();
+
+		[rect.x,     rect.y     ] = this.actor.get_transformed_position();
+		[rect.width, rect.height] = this.actor.get_transformed_size();
+
+		this.metaWindow.set_icon_geometry(rect);
 	},
 
 	_onTitleChanged: function () {
