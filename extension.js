@@ -189,23 +189,21 @@ const WindowListItem = new Lang.Class({
 		this.actor.connect('button-press-event',
 		                           Lang.bind(this, this._onButtonPress));
 
-		this._ID_notify_title = this.metaWindow.connect('notify::title',
-		                      Lang.bind(this, this._onTitleChanged));
-	},
-
-	_onTitleChanged: function () {
-		let title;
-		if (this.metaWindow.showing_on_its_workspace())
-			title =       this.metaWindow.title;
-		else
-			title = '[' + this.metaWindow.title + ']';
-		this._label.set_text(title);
+		this._ID_notify_title =
+		        this.metaWindow.connect('notify::title',
+		               Lang.bind(this, this._onTitleChanged));
+		this._ID_notify_minimize =
+		        this.metaWindow.connect('notify::minimized',
+				        Lang.bind(this, this._onMinimizedChanged));
+		this._ID_notify_focus =
+				global.display.connect('notify::focus-window',
+				        Lang.bind(this, this._onFocusChanged));
 	},
 
 	_onDestroy: function () {
-		// The actor is getting destroyed soon, no need to disconnect his
-		// signals
 		this.metaWindow.disconnect(this._ID_notify_title);
+		this.metaWindow.disconnect(this._ID_notify_minimize);
+		global.display.disconnect( this._ID_notify_focus);
 		this._menu.destroy();
 	},
 
@@ -213,8 +211,6 @@ const WindowListItem = new Lang.Class({
 		let but = event.get_button();
 		if (but === 1) {
 			this._menu.close();
-			// The timestamp is necessary for window activation, so outdated 
-			// requests can be ignored. This isn't necessary for minimization
 			if (this.metaWindow.has_focus())
 				this.metaWindow.minimize();
 			else
@@ -224,35 +220,31 @@ const WindowListItem = new Lang.Class({
 		}
 	},
 
-	// Public methods
-
-	// I would just point this to _onTitleChanged. However, while the window is
-	// minimizing, it's not technically minimized yet and thus the title would
-	// be inaccurate.
-	onMinimize: function () {
-		this._label.set_text('[' + this.metaWindow.title + ']');
-		this._icon.set_opacity(64);
+	_onTitleChanged: function () {
+		let formatString = this.metaWindow.minimized ? '[%s]' : '%s';
+		this._label.text = formatString.format(this.metaWindow.title);
 	},
 
-	onMap: function () {
-		this._label.set_text(      this.metaWindow.title      );
-		this._icon.set_opacity(255);
+	_onMinimizedChanged: function () {
+		this._icon.set_opacity(this.metaWindow.minimized ? 64 : 255);
+		this._onTitleChanged();
 	},
 
-	onFocus: function () {
+	_onFocusChanged: function () {
 		if (this.metaWindow.has_focus()) {
 			this._itemBox.add_style_pseudo_class('focused');
 		} else {
 			this._itemBox.remove_style_pseudo_class('focused');
 		}
 	},
+
 });
 
 const WindowList = new Lang.Class({
 	Name: "WindowList",
 
-	_init: function (panel) {
-		this._panel = panel;
+	_init: function (menuManager) {
+		this._menuManager = menuManager;
 		this._ws = {workspace: undefined, _ID_window_added: 0,
 		                                  _ID_window_removed: 0};
 		this._windows = [];
@@ -268,15 +260,7 @@ const WindowList = new Lang.Class({
 		this.actor.connect('scroll-event',
 		        Lang.bind(this, this._onScrollEvent));
 
-		let tracker = Shell.WindowTracker.get_default();
-		this._ID_tracker_notify = tracker.connect('notify::focus-app',
-		        Lang.bind(this, this._onFocus));
-
 		let wm = global.window_manager;
-		this._ID_minimize = wm.connect('minimize',
-		        Lang.bind(this, this._onMinimize));
-		this._ID_map = wm.connect('map',
-		        Lang.bind(this, this._onMap));
 		this._ID_switch_workspace = wm.connect('switch-workspace',
 		        Lang.bind(this, this._onSwitchWorkspace));
 
@@ -286,96 +270,55 @@ const WindowList = new Lang.Class({
 	},
 
 	_onDestroy: function () {
-		let tracker = Shell.WindowTracker.get_default();
-		if (this._ID_tracker_notify)
-			tracker.disconnect(this._ID_tracker_notify);
-
 		let screen = global.screen;
-		if (this._ID_screen_notify)
-			screen.disconnect(this._ID_screen_notify);
+		screen.disconnect(this._ID_screen_notify);
 
 		let wm = global.window_manager;
-		if (this._ID_minimize)
-			wm.disconnect(this._ID_minimize);
-		if (this._ID_map)
-			wm.disconnect(this._ID_map);
-		if (this._ID_switch_workspace)
-			wm.disconnect(this._ID_switch_workspace);
+		wm.disconnect(this._ID_switch_workspace);
 
-		let ws = this._ws.workspace;
-		if (this._ws._ID_window_added)
-			ws.disconnect(this._ws._ID_window_added);
-		if (this._ws._ID_window_removed)
-			ws.disconnect(this._ws._ID_window_removed);
+		let ws = this._ws;
+		ws.workspace.disconnect(ws._ID_window_added);
+		ws.workspace.disconnect(ws._ID_window_removed);
 	},
 
 	_onSwitchWorkspace: function () {
 		// Start by disconnecting all signals from the old workspace
-		let ws = this._ws.workspace; // Shortcut
+		let ws = this._ws;
 
-		if (this._ws._ID_window_added)
-			ws.disconnect(this._ws._ID_window_added);
+		if (ws._ID_window_added)
+			ws.workspace.disconnect(ws._ID_window_added);
 
-		if (this._ws._ID_window_removed)
-			ws.disconnect(this._ws._ID_window_removed);
+		if (ws._ID_window_removed)
+			ws.workspace.disconnect(ws._ID_window_removed);
 
 		// Now connect the new signals
-		this._ws.workspace = global.screen.get_active_workspace();
-		let ws = this._ws.workspace; // Shortcut
+		ws.workspace = global.screen.get_active_workspace();
 
-		this._ws._ID_window_added = ws.connect('window-added',
+		ws._ID_window_added = ws.workspace.connect('window-added',
 		        Lang.bind(this, this._windowAdded));
-		this._ws._ID_window_removed = ws.connect('window-removed',
+		ws._ID_window_removed = ws.workspace.connect('window-removed',
 		        Lang.bind(this, this._windowRemoved));
 		this._reloadItems();
 	},
 
-	_windowAdded: function (metaWorkspace, metaWindow) {
-		if (metaWorkspace.index() !== global.screen.get_active_workspace_index())
+	_windowAdded: function (workspace, window) {
+		if (workspace.index() !== global.screen.get_active_workspace_index())
 			return;
 
-		this._addWindow(metaWindow)
+		this._addWindow(window)
 	},
 
-	_windowRemoved: function (metaWorkspace, metaWindow) {
-		if (metaWorkspace.index() !== global.screen.get_active_workspace_index())
+	_windowRemoved: function (workspace, window) {
+		if (workspace.index() !== global.screen.get_active_workspace_index())
 			return;
 
 		for (let i in this._windows) {
 			let w = this._windows[i];
-			if (w.metaWindow === metaWindow) {
+			if (w.metaWindow === window) {
 				this.actor.remove_actor(w.actor);
 				w.actor.destroy();
 				this._windows.splice(i, 1);
 				break;
-			}
-		}
-	},
-
-	// I delegate all signals to their respective windows here.
-	// The `focus` signal is trickier since no defocus signal is emitted
-	// I just warn every window and let them figure it out themselves
-	// Bug in Mutter!
-	_onFocus: function () {
-		for (let i in this._windows) {
-			this._windows[i].onFocus();
-		}
-	},
-
-	_onMinimize: function (shellwm, actor) {
-		for (let i in this._windows) {
-			if (this._windows[i].metaWindow === actor.get_meta_window()) {
-				this._windows[i].onMinimize();
-				return;
-			}
-		}
-	},
-
-	_onMap: function (shellwm, actor) {
-		for (let i in this._windows) {
-			if (this._windows[i].metaWindow === actor.get_meta_window()) {
-				this._windows[i].onMap();
-				return;
 			}
 		}
 	},
@@ -419,7 +362,7 @@ const WindowList = new Lang.Class({
 		let item = new WindowListItem(metaWindow);
 		this._windows.push(item);
 		this.actor.add(item.actor);
-		this._panel.menus.addMenu(item._menu);
+		this._menuManager.addMenu(item._menu);
 	},
 
 	_reloadItems: function () {
@@ -435,9 +378,6 @@ const WindowList = new Lang.Class({
 		for (let i = 0; i < windows.length; i++) {
 			this._addWindow(windows[i]);
 		}
-
-		// To highlight the currently focused window
-		this._onFocus();
 	}
 });
 
@@ -453,7 +393,7 @@ const BottomPanel = new Lang.Class({
 		// PopupMenuManager needs this.actor to be defined
 		this.menus = new PopupMenu.PopupMenuManager(this);
 
-		this._windowList = new WindowList(this);
+		this._windowList = new WindowList(this.menus);
 		this.actor.add(this._windowList.actor, {expand: true});
 
 		// Signals
@@ -486,8 +426,9 @@ const BottomPanel = new Lang.Class({
 	},
 
 	_onDestroy: function () {
-		if (this._ID_monitors_changed)
-			global.screen.disconnect(this._ID_monitors_changed);
+		global.screen.disconnect(this._ID_monitors_changed);
+		Main.overview.disconnect(this._ID_overview_show);
+		Main.overview.disconnect(this._ID_overview_hide);
 	}
 });
 
