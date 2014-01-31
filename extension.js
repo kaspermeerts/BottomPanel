@@ -572,7 +572,10 @@ function enable() {
 
 	bottomPanel = new BottomPanel();
 
-	Main.layoutManager.addChrome(bottomPanel.actor, {affectsStruts: true, trackFullscreen: true});
+	Main.layoutManager.addChrome(bottomPanel.actor, {affectsStruts: true,
+	                                                 trackFullscreen: true});
+	Main.ctrlAltTabManager.addGroup(bottomPanel.actor,
+	        "Bottom Bar", 'start-here-symbolic');
 	bottomPanel.relayout();
 }
 
@@ -585,6 +588,7 @@ function disable() {
     MessageTray.MessageTray.prototype._onNotificationExpanded =
         origOnNotificationExpanded;
 
+	Main.ctrlAltTabManager.removeGroup(bottomPanel.actor);
 	Main.layoutManager.removeChrome(bottomPanel.actor);
 	bottomPanel.actor.destroy();
 	bottomPanel = null;
