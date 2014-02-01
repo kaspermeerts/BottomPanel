@@ -60,6 +60,9 @@ const WindowOptionsMenu = new Lang.Class({
 
 	_init: function (windowlistitem) {
 		this.parent(windowlistitem.actor, 0.0, St.Side.BOTTOM);
+
+		let tracker = Shell.WindowTracker.get_default();
+		this._app = tracker.get_window_app(windowlistitem.metaWindow);
 		this._items = [];
 		this._window = windowlistitem;
 
@@ -70,7 +73,10 @@ const WindowOptionsMenu = new Lang.Class({
 		for (let i in WINDOW_OPTIONS_MENU) {
 			let option = WINDOW_OPTIONS_MENU[i];
 			let menu_item;
-			let item_name = option.name.format(this._window.appName);
+
+			let appName = this._app.get_name();
+			let item_name = option.name.format(appName);
+
 			switch (option.type) {
 			case WINDOW_OPTION_TYPES.BUTTON:
 				menu_item = new PopupMenu.PopupMenuItem(item_name);
@@ -140,9 +146,7 @@ const WindowOptionsMenu = new Lang.Class({
 			metaWindow.delete(global.get_current_time());
 			break;
 		case WINDOW_OPTIONS.QUIT:
-			let tracker = Shell.WindowTracker.get_default();
-			let app = tracker.get_window_app(metaWindow);
-			app.request_quit();
+			this._app.request_quit();
 			break;
 		default:
 			global.log("Unknown WINDOW_OPTIONS option: " + option.name);
@@ -155,11 +159,6 @@ const WindowListItem = new Lang.Class({
 	Name: "WindowListItem",
 
 	_init: function (metaWindow) {
-		// Shortcut
-		let tracker = Shell.WindowTracker.get_default();
-		let app = tracker.get_window_app(metaWindow);
-
-		this.appName = app.get_name();
 		this.metaWindow = metaWindow;
 		// A `WindowListItem` is actored by an StBoxLayout which envelops
 		// an StLabel and a ClutterTexture
@@ -172,16 +171,27 @@ const WindowListItem = new Lang.Class({
 		Main.uiGroup.add_actor(this._menu.actor);
 		this._menu.actor.hide();
 
-		/* Application icon */
-		this._icon = app.create_icon_texture(16);
-		this._itemBox.add(this._icon,  {x_fill: false, y_fill: false});
+		// Window icon
+		let mini_icon = this.metaWindow.mini_icon;
+		this._icon = new Clutter.Texture();
+		this._icon.set_from_rgb_data(mini_icon.get_pixels(),
+		                             mini_icon.get_has_alpha(),
+							         mini_icon.get_width(),
+							         mini_icon.get_height(),
+							         mini_icon.get_rowstride(),
+							         4, // BPP
+							         0); // Textureflags, none handled yet
+		this._icon.set_width(16);
+		this._icon.set_height(16);
+		//this._icon = app.create_icon_texture(16);
+		this._itemBox.add(this._icon, {x_fill: false, y_fill: false});
 
-		/* Application name */
+		// Window name
 		this._label = new St.Label({style_class: 'window-list-item-label'});
 		this._itemBox.add(this._label, {x_fill: true,  y_fill: false});
 		this._onTitleChanged();
 
-		/* Signals */
+		// Signals
 		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
 		this.actor.connect('button-press-event',
 		        Lang.bind(this, this._onButtonPress));
@@ -364,9 +374,6 @@ const WindowList = new Lang.Class({
 		let tracker = Shell.WindowTracker.get_default();
 		// Interesting windows exclude stuff like docks, desktop, etc...
 		if (!metaWindow || !tracker.is_window_interesting(metaWindow))
-			return;
-		let app = tracker.get_window_app(metaWindow);
-		if (!app)
 			return;
 		let item = new WindowListItem(metaWindow);
 		this._windows.push(item);
