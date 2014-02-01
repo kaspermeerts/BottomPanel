@@ -1,9 +1,8 @@
 // Bottom panel extension
-// Copyright (C) 2012 Kasper Maurice Meerts
+// Copyright (C) 2014 Kasper Maurice Meerts
 // License: GPLv2+
-// Based on the extension made by R.M. Yorston
 // Many inspiration gotten from the extensions by
-// gcampax and Mathematical Coffee
+// R.M. Yorston, gcampax and Mathematical Coffee
 
 "use strict";
 
@@ -55,8 +54,6 @@ const WINDOW_OPTIONS_MENU = [
 	WINDOW_OPTIONS.QUIT
 ];
 
-let bottomPanel = null;
-
 const WindowOptionsMenu = new Lang.Class({
 	Name: "WindowOptionsMenu",
 	Extends: PopupMenu.PopupMenu,
@@ -88,7 +85,7 @@ const WindowOptionsMenu = new Lang.Class({
 						          option, this._window.metaWindow));
 				break;
 			case WINDOW_OPTION_TYPES.SEPARATOR:
-				menu_item = new PopupMenu.PopupSeparatorMenuItem(item_name);
+				menu_item = new PopupMenu.PopupSeparatorMenuItem();
 				break;
 			default:
 				global.log("Unknown WINDOW_OPTIONS_MENU option: " +
@@ -164,8 +161,8 @@ const WindowListItem = new Lang.Class({
 
 		this.appName = app.get_name();
 		this.metaWindow = metaWindow;
-		/* A `WindowListItem` is actored by an StBoxLayout which envelops
-		 * an StLabel and a ClutterTexture */
+		// A `WindowListItem` is actored by an StBoxLayout which envelops
+		// an StLabel and a ClutterTexture
 		this._itemBox = new St.BoxLayout({style_class: 'window-list-item-box',
 		                                  reactive: 'true'});
 		this.actor = this._itemBox;
@@ -324,7 +321,7 @@ const WindowList = new Lang.Class({
 		if (workspace.index() !== global.screen.get_active_workspace_index())
 			return;
 
-		for (let i in this._windows) {
+		for (let i = 0; i < this._windows.length; i++) {
 			let w = this._windows[i];
 			if (w.metaWindow === window) {
 				this.actor.remove_actor(w.actor);
@@ -346,11 +343,11 @@ const WindowList = new Lang.Class({
 
 		let ws = this._windows;
 		let focus_i = -1;
-		// I can't use the for(..in..) construction because that makes `i`
-		// into a String. I don't get it either.
-		for (let i = 0; i < ws.length; i++)
-			if (ws[i].metaWindow.has_focus())
-				focus_i = i;
+		for (let i = 0; i < ws.length; i++) {
+			if (ws[i].metaWindow.has_focus()) {
+				focus_i = i
+			}
+		}
 		if (focus_i === -1)
 			return;
 
@@ -413,6 +410,8 @@ const BottomPanel = new Lang.Class({
 		this.actor.connect('style-changed', Lang.bind(this, this.relayout));
 		this._ID_monitors_changed = global.screen.connect(
 		        'monitors-changed', Lang.bind(this, this.relayout));
+		this._ID_fullscreen_changed = global.screen.connect(
+		        'in-fullscreen-changed', Lang.bind(this, this._updateAnchor));
 		this._ID_overview_show = Main.overview.connect('showing',
 				Lang.bind(this, this._showOverview));
 		this._ID_overview_hide = Main.overview.connect('hidden',
@@ -423,153 +422,48 @@ const BottomPanel = new Lang.Class({
 		let prim = Main.layoutManager.primaryMonitor;
 		let h = this.actor.get_theme_node().get_height();
 
-		/* Only with these precise measurements will windows snap to it
-		 * like a real panel. */
+		// Only with these precise measurements will windows snap to it
 		this.actor.set_position(prim.x, prim.y + prim.height - h);
 		this.actor.set_size(prim.width, -1);
+
+		this._updateAnchor();
 	},
 
-	_showOverview: function() {
+	_showOverview: function () {
 		this.actor.hide();
+		this._updateAnchor();
 	},
 
-	_hideOverview: function() {
-		this.actor.show();
+	_hideOverview: function () {
+		if (!Main.layoutManager.primaryMonitor.inFullscreen)
+			this.actor.show();
+		this._updateAnchor();
+	},
+
+	_updateAnchor: function () {
+		let h = this.actor.visible ? this.actor.height : 0;
+
+		Main.messageTray.actor.anchor_y = h;
+		Main.messageTray._notificationWidget.anchor_y = h;
 	},
 
 	_onDestroy: function () {
 		global.screen.disconnect(this._ID_monitors_changed);
+		global.screen.disconnect(this._ID_fullscreen_changed);
 		Main.overview.disconnect(this._ID_overview_show);
 		Main.overview.disconnect(this._ID_overview_hide);
+
+		Main.messageTray.actor.anchor_y = 0;
 	}
 });
 
-let myShowTray, origShowTray;
-let myHideTray, origHideTray;
-let myUpdateShowingNotification, origUpdateShowingNotification;
-let myOnNotificationExpanded, origOnNotificationExpanded;
-let myToggleState, origToggleState;
+let bottomPanel = null;
 
 function init(extensionMeta) {
-	// For some fucked up reason, the (x,y) coordinates here are relative to
-	// the bottom-left corner. That means that positive x-coordinates work
-	// as expected, yet positive y-coordinates fall off the screen!
-
-	// The first `MessageTray` is the namespace, the second is the actual Object
-	origShowTray = MessageTray.MessageTray.prototype._showTray;
-	myShowTray = function() {
-		if (!this._grabHelper.grab({ actor: this.actor,
-		                             modal: true,
-									 onUngrab: Lang.bind(this, this._escapeTray) })) {
-			this._traySummoned = false;
-			return false;
-		}
-
-		this.emit('showing');
-		let h = bottomPanel.actor.get_theme_node().get_height();
-		this.actor.y = -h;
-		this._tween(this.actor, '_trayState', MessageTray.State.SHOWN,
-		            { y: -this.actor.height - h,
-					  time: MessageTray.ANIMATION_TIME,
-					  transition: 'easeOutQuad'
-					});
-
-		this._lightbox.show();
-
-		return true;
-	};
-
-	origHideTray = MessageTray.MessageTray.prototype._hideTray;
-	myHideTray = function() {
-		this._summaryBoxPointer.actor.hide();
-
-		this.emit('hiding');
-		let h = bottomPanel.actor.get_theme_node().get_height();
-		this._tween(this.actor, '_trayState', MessageTray.State.HIDDEN,
-		            { y: -h,
-					  time: MessageTray.ANIMATION_TIME,
-					  transition: 'easeOutQuad',
-					  onComplete: function(){this.actor.y = 0},
-					  onCompleteScope: this,
-					});
-
-		this._grabHelper.ungrab({actor: this.actor});
-		this._lightbox.hide();
-	};
-
-	origUpdateShowingNotification =
-		MessageTray.MessageTray.prototype._updateShowingNotification;
-	myUpdateShowingNotification = function() {
-		this._notification.acknowledged = true;
-
-		if (this._notification.urgency === MessageTray.Urgency.CRITICAL)
-			this._expandNotification(true);
-
-		let tweenParams = { opacity: 255,
-		                    time: MessageTray.ANIMATION_TIME,
-		                    transition: 'easeOutQuad',
-		                    onComplete: this._showNotificationCompleted,
-		                    onCompleteScope: this
-		                  };
-		if (!this._notification.expanded) {
-			let h = bottomPanel.actor.get_theme_node().get_height();
-			tweenParams.y = -this._notificationWidget.height - h;
-		}
-
-		this._tween(this._notificationWidget, '_notificationState',
-				MessageTray.State.SHOWN, tweenParams);
-	};
-
-    origOnNotificationExpanded =
-        MessageTray.MessageTray.prototype._onNotificationExpanded;
-    myOnNotificationExpanded = function() {
-        let h = bottomPanel.actor.get_theme_node().get_height();
-        let expandedY = - this._notificationWidget.height - h;
-        // Using the close button causes a segfault when the tray is next
-        // invoked.  So don't display the close button.
-        //this._closeButton.show();
-
-        // Don't animate the notification to its new position if it has shrunk:
-        // there will be a very visible "gap" that breaks the illusion.
-        if (this._notificationWidget.y < expandedY) {
-            this._notificationWidget.y = expandedY;
-        } else if (this._notification.y != expandedY) {
-            this._tween(this._notificationWidget, '_notificationState', MessageTray.State.SHOWN,
-                        { y: expandedY,
-                          opacity: 255,
-                          time: MessageTray.ANIMATION_TIME,
-                          transition: 'easeOutQuad'
-                        });
-        }
-    };
-
-	// ToggleState is not defined at the moment, but it doesn't hurt to be
-	// futureproof.
-	origToggleState = MessageTray.MessageTray.prototype.toggleState;
-	// I'll be honest, I don't really know what's going on here.
-	// The code in messageTray.js is an absolute mess!
-	myToggleState = function() {
-		if (this._summaryState === MessageTray.State.SHOWN) {
-			this._pointerInSummary = false;
-			this._traySummoned = false;
-		}
-		else {
-			this._pointerInSummary = true;
-			this._traySummoned = true;
-		}
-		this._updateState();
-	};
+	return;
 }
 
 function enable() {
-	MessageTray.MessageTray.prototype._showTray = myShowTray;
-	MessageTray.MessageTray.prototype._hideTray = myHideTray;
-	MessageTray.MessageTray.prototype.toggleState = myToggleState;
-    MessageTray.MessageTray.prototype._updateShowingNotification =
-        myUpdateShowingNotification;
-    MessageTray.MessageTray.prototype._onNotificationExpanded =
-        myOnNotificationExpanded;
-
 	bottomPanel = new BottomPanel();
 
 	Main.layoutManager.addChrome(bottomPanel.actor, {affectsStruts: true,
@@ -580,14 +474,6 @@ function enable() {
 }
 
 function disable() {
-	MessageTray.MessageTray.prototype._showTray = origShowTray;
-	MessageTray.MessageTray.prototype._hideTray = origHideTray;
-	MessageTray.MessageTray.prototype.toggleState = origToggleState;
-    MessageTray.MessageTray.prototype._updateShowingNotification =
-        origUpdateShowingNotification;
-    MessageTray.MessageTray.prototype._onNotificationExpanded =
-        origOnNotificationExpanded;
-
 	Main.ctrlAltTabManager.removeGroup(bottomPanel.actor);
 	Main.layoutManager.removeChrome(bottomPanel.actor);
 	bottomPanel.actor.destroy();

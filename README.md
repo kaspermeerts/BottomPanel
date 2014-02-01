@@ -4,9 +4,10 @@ Bottom Panel GNOME Shell Extension
 Overview
 ---
 
-This is an extension for GNOME Shell 3.2 that adds a bottom panel to the shell.
+This is an extension for GNOME Shell that adds a bottom panel to the shell.
 
-This code was based on [the GNOME Shell Frippery project](http://intgat.tigress.co.uk/rmy/extensions/index.html) by Ron Yorston.
+The panel gives a simple overview of all open windows and makes it easy to switch
+between them.
 
 Features:
 ---
@@ -21,6 +22,8 @@ Features:
 
 Future plans include:
 ---
+
++ Workspace switcher
 
 + Dragging and dropping windows
 
@@ -40,4 +43,4 @@ License
 This project is licensed under the terms of the GPL v2.0,
 see [http://www.gnu.org/licenses/gpl-2.0.html](http://www.gnu.org/licenses/gpl-2.0.html)
 
-Copyright (C) 2012 Kasper Maurice Meerts
+Copyright (C) 2014 Kasper Maurice Meerts
