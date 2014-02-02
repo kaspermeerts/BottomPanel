@@ -16,42 +16,88 @@ const Main = imports.ui.main;
 const MessageTray = imports.ui.messageTray;
 const PopupMenu = imports.ui.popupMenu;
 
-const WINDOW_OPTION_TYPES = {
+const OPTION_TYPES = {
 	BUTTON: "Button",
 	SWITCH: "Switch",
 	SEPARATOR: "Separator"
 };
 
-const WINDOW_OPTIONS = {
-	MINIMIZE:       {name: "Minimize",      type: WINDOW_OPTION_TYPES.BUTTON},
-	RESTORE:        {name: "Restore",       type: WINDOW_OPTION_TYPES.BUTTON},
-	MAXIMIZE:       {name: "Maximize",      type: WINDOW_OPTION_TYPES.BUTTON},
-	CLOSE:          {name: "Close window",  type: WINDOW_OPTION_TYPES.BUTTON},
-	QUIT:           {name: "Quit %s",       type: WINDOW_OPTION_TYPES.BUTTON},
-	ALWAYS_ON_TOP:  {name: "Always on top", type: WINDOW_OPTION_TYPES.SWITCH},
-	ALWAYS_ON_WORKSPACE:
-	                {name: "Always on visible workspace",
-					                        type: WINDOW_OPTION_TYPES.SWITCH},
-	PREV_WORKSPACE: {name: "Move to previous workspace",
-	                                        type: WINDOW_OPTION_TYPES.BUTTON},
-	NEXT_WORKSPACE: {name: "Move to next workspace",
-	                                        type: WINDOW_OPTION_TYPES.BUTTON},
-	SEPARATOR:      {name: "Separator",     type: WINDOW_OPTION_TYPES.SEPARATOR}
+// TODO Make a Class of all these singleton objects,
+// hoist some of the _addItem logic in them
+// TODO Sticky windows and Above all windows (Metawindow.sticky...)
+const OPTIONS = {
+	SEPARATOR: {
+		type: OPTION_TYPES.SEPARATOR,
+	},
+	MINIMIZE: {
+		title: "Minimize",
+		type: OPTION_TYPES.BUTTON,
+		callback: function (item, event, metaWindow) {
+			metaWindow.minimize();
+		},
+	},
+	RESTORE: {
+		title: "Restore",
+		type: OPTION_TYPES.BUTTON,
+		callback: function (item, event, metaWindow) {
+			metaWindow.unmaximize(Meta.MaximizeFlags.HORIZONTAL |
+			                      Meta.MaximizeFlags.VERTICAL);
+		},
+	},
+	MAXIMIZE: {
+		title: "Maximize",
+		type: OPTION_TYPES.BUTTON,
+		callback: function (item, event, metaWindow) {
+			metaWindow.maximize(Meta.MaximizeFlags.HORIZONTAL |
+			                    Meta.MaximizeFlags.VERTICAL);
+		},
+	},
+	MOVE_PREVIOUS: {
+		title: "Move to previous workspace",
+		type: OPTION_TYPES.BUTTON,
+		callback: function(item, event, metaWindow) {
+			metaWindow.change_workspace_by_index(
+			        metaWindow.get_workspace().index() - 1,
+					false,
+					global.get_current_time());
+		},
+	},
+	MOVE_NEXT: {
+		title: "Move to next workspace",
+		type: OPTION_TYPES.BUTTON,
+		callback: function (item, event, metaWindow) {
+			metaWindow.change_workspace_by_index(
+			        metaWindow.get_workspace().index() + 1,
+					false,
+					global.get_current_time());
+		},
+	},
+	CLOSE: {
+		title: "Close window",
+		type: OPTION_TYPES.BUTTON,
+		callback: function (item, event, metaWindow) {
+			metaWindow.delete(global.get_current_time());
+		},
+	},
+	QUIT: {
+		title: "Quit",
+		type: OPTION_TYPES.BUTTON,
+		callback: function(item, event, metaWindow) {
+			this._app.request_quit();
+		},
+	},
 };
 
-const WINDOW_OPTIONS_MENU = [
-	WINDOW_OPTIONS.MINIMIZE,
-	WINDOW_OPTIONS.RESTORE,
-	WINDOW_OPTIONS.MAXIMIZE,
-	WINDOW_OPTIONS.SEPARATOR,
-	WINDOW_OPTIONS.PREV_WORKSPACE,
-	WINDOW_OPTIONS.NEXT_WORKSPACE,
-	WINDOW_OPTIONS.SEPARATOR,
-/*	WINDOW_OPTIONS.ALWAYS_ON_TOP,
-	WINDOW_OPTIONS.ALWAYS_ON_WORKSPACE,
-	WINDOW_OPTIONS.SEPARATOR,*/
-	WINDOW_OPTIONS.CLOSE,
-	WINDOW_OPTIONS.QUIT
+const OPTION_MENU = [
+	OPTIONS.MINIMIZE,
+	OPTIONS.RESTORE,
+	OPTIONS.MAXIMIZE,
+	OPTIONS.SEPARATOR,
+	OPTIONS.MOVE_PREVIOUS,
+	OPTIONS.MOVE_NEXT,
+	OPTIONS.SEPARATOR,
+	OPTIONS.CLOSE,
+	OPTIONS.QUIT,
 ];
 
 const WindowOptionsMenu = new Lang.Class({
@@ -63,96 +109,37 @@ const WindowOptionsMenu = new Lang.Class({
 
 		let tracker = Shell.WindowTracker.get_default();
 		this._app = tracker.get_window_app(windowlistitem.metaWindow);
-		this._items = [];
 		this._window = windowlistitem;
 
-		this._fillMenu();
+		OPTION_MENU.forEach(this._addItem, this);
 	},
 
-	_fillMenu: function () {
-		for (let i in WINDOW_OPTIONS_MENU) {
-			let option = WINDOW_OPTIONS_MENU[i];
-			let menu_item;
+	_addItem: function (option) {
+		let menu_item;
 
+		if (option === OPTIONS.SEPARATOR) {
+			menu_item = new PopupMenu.PopupSeparatorMenuItem();
+		} else {
 			let appName = this._app.get_name();
-			let item_name = option.name.format(appName);
+			let item_name = option.title;
+			if (option === OPTIONS.QUIT)
+				item_name += " " + appName;
 
-			switch (option.type) {
-			case WINDOW_OPTION_TYPES.BUTTON:
-				menu_item = new PopupMenu.PopupMenuItem(item_name);
-				menu_item.connect('activate',
-				        Lang.bind(this, this._onActivate,
-						          option, this._window.metaWindow));
-				break;
-			case WINDOW_OPTION_TYPES.SWITCH:
-				menu_item = new PopupMenu.PopupSwitchMenuItem(item_name);
-				menu_item.connect('toggled',
-				        Lang.bind(this, this._onActivate,
-						          option, this._window.metaWindow));
-				break;
-			case WINDOW_OPTION_TYPES.SEPARATOR:
-				menu_item = new PopupMenu.PopupSeparatorMenuItem();
-				break;
-			default:
-				global.log("Unknown WINDOW_OPTIONS_MENU option: " +
-				        WINDOW_OPTIONS_MENU[i]);
-				// XXX: Abort everthing?
-				return;
-				break;
-			}
-			/* Some special cases */
-			if (option === WINDOW_OPTIONS.PREV_WORKSPACE)
-				if (global.screen.get_active_workspace_index() === 0)
-					menu_item.setSensitive(false);
-			if (option === WINDOW_OPTIONS.NEXT_WORKSPACE)
-				if (global.screen.get_active_workspace_index() === global.screen.n_workspaces)
-					menu_item.setSensitive(false);
-
-			this._items[i] = menu_item;
-			this.addMenuItem(menu_item);
+			menu_item = new PopupMenu.PopupMenuItem(item_name);
+			menu_item.connect('activate',
+					Lang.bind(this, option.callback, this._window.metaWindow));
 		}
+
+		/* Some special cases */
+		if (option === OPTIONS.MOVE_PREVIOUS)
+			if (global.screen.get_active_workspace_index() === 0)
+				menu_item.setSensitive(false);
+		if (option === OPTIONS.MOVE_NEXT)
+			if (global.screen.get_active_workspace_index() === global.screen.n_workspaces)
+				menu_item.setSensitive(false);
+
+		this.addMenuItem(menu_item);
 	},
-
-	_onActivate: function(menu_item, event, option, metaWindow) {
-		switch(option) {
-		case WINDOW_OPTIONS.MINIMIZE:
-			metaWindow.minimize();
-			break;
-		case WINDOW_OPTIONS.RESTORE:
-			metaWindow.unmaximize(
-			    Meta.MaximizeFlags.HORIZONTAL | Meta.MaximizeFlags.VERTICAL);
-			break;
-		case WINDOW_OPTIONS.MAXIMIZE:
-			metaWindow.maximize(
-			    Meta.MaximizeFlags.HORIZONTAL | Meta.MaximizeFlags.VERTICAL);
-			break;
-		case WINDOW_OPTIONS.ALWAYS_ON_TOP:
-		case WINDOW_OPTIONS.ALWAYS_ON_WORKSPACE:
-			global.log("Not yet implemented function: " + option.name);
-			break;
-		case WINDOW_OPTIONS.PREV_WORKSPACE:
-			metaWindow.change_workspace_by_index(
-			        metaWindow.get_workspace().index() - 1,
-					false,
-					global.get_current_time());
-			break;
-		case WINDOW_OPTIONS.NEXT_WORKSPACE:
-			metaWindow.change_workspace_by_index(
-			        metaWindow.get_workspace().index() + 1,
-					false,
-					global.get_current_time());
-			break;
-		case WINDOW_OPTIONS.CLOSE:
-			metaWindow.delete(global.get_current_time());
-			break;
-		case WINDOW_OPTIONS.QUIT:
-			this._app.request_quit();
-			break;
-		default:
-			global.log("Unknown WINDOW_OPTIONS option: " + option.name);
-			break;
-		}
-	}
 });
 
 const WindowListItem = new Lang.Class({
@@ -173,9 +160,9 @@ const WindowListItem = new Lang.Class({
 		                             child: this._itemBox, });
 		this.actor._delegate = this;
 
-		this._menu = new WindowOptionsMenu(this);
-		Main.uiGroup.add_actor(this._menu.actor);
-		this._menu.actor.hide();
+		this.menu = new WindowOptionsMenu(this);
+		Main.uiGroup.add_actor(this.menu.actor);
+		this.menu.actor.hide();
 
 		// Window icon
 		let mini_icon = this.metaWindow.icon;
@@ -219,12 +206,12 @@ const WindowListItem = new Lang.Class({
 		this.metaWindow.disconnect(this._ID_notify_title);
 		this.metaWindow.disconnect(this._ID_notify_minimize);
 		global.display.disconnect( this._ID_notify_focus);
-		this._menu.destroy();
+		this.menu.destroy();
 	},
 
 	_onClicked: function (actor, button) {
-		if (this._menu.isOpen) {
-			this._menu.close();
+		if (this.menu.isOpen) {
+			this.menu.close();
 			return;
 		}
 
@@ -236,7 +223,7 @@ const WindowListItem = new Lang.Class({
 		} else if (button === 2) {
 			this.metaWindow.delete(global.get_current_time());
 		} else if (button === 3) {
-			this._menu.open();
+			this.menu.open();
 		}
 	},
 
@@ -387,7 +374,7 @@ const WindowList = new Lang.Class({
 		let item = new WindowListItem(metaWindow);
 		this._windows.push(item);
 		this.actor.add(item.actor);
-		this._menuManager.addMenu(item._menu);
+		this._menuManager.addMenu(item.menu);
 	},
 
 	_reloadItems: function () {
