@@ -13,7 +13,6 @@ const Shell = imports.gi.Shell;
 const St = imports.gi.St;
 
 const Main = imports.ui.main;
-const MessageTray = imports.ui.messageTray;
 const PopupMenu = imports.ui.popupMenu;
 
 const OPTION_TYPES = {
@@ -320,7 +319,7 @@ const WindowList = new Lang.Class({
 		if (workspace.index() !== global.screen.get_active_workspace_index())
 			return;
 
-		this._addWindow(window)
+		this._addWindow(window);
 	},
 
 	_windowRemoved: function (workspace, window) {
@@ -351,7 +350,7 @@ const WindowList = new Lang.Class({
 		let focus_i = -1;
 		for (let i = 0; i < ws.length; i++) {
 			if (ws[i].metaWindow.has_focus()) {
-				focus_i = i
+				focus_i = i;
 			}
 		}
 		if (focus_i === -1)
