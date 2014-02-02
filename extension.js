@@ -160,11 +160,17 @@ const WindowListItem = new Lang.Class({
 
 	_init: function (metaWindow) {
 		this.metaWindow = metaWindow;
-		// A `WindowListItem` is actored by an StBoxLayout which envelops
-		// an StLabel and a ClutterTexture
-		this._itemBox = new St.BoxLayout({style_class: 'window-list-item-box',
-		                                  reactive: 'true'});
-		this.actor = this._itemBox;
+		// A `WindowListItem` is actored by an StButton containing
+		// an StBoxLayout with an StLabel and an StBin
+		this._itemBox = new St.BoxLayout({});
+		this.actor = new St.Button({ style_class: 'window-button',
+		                             can_focus: true,
+									 x_fill: true,
+									 y_fill:true,
+									 button_mask: St.ButtonMask.ONE |
+									              St.ButtonMask.TWO |
+												  St.ButtonMask.THREE,
+		                             child: this._itemBox, });
 		this.actor._delegate = this;
 
 		this._menu = new WindowOptionsMenu(this);
@@ -172,29 +178,28 @@ const WindowListItem = new Lang.Class({
 		this._menu.actor.hide();
 
 		// Window icon
-		let mini_icon = this.metaWindow.mini_icon;
-		this._icon = new Clutter.Texture();
-		this._icon.set_from_rgb_data(mini_icon.get_pixels(),
-		                             mini_icon.get_has_alpha(),
-							         mini_icon.get_width(),
-							         mini_icon.get_height(),
-							         mini_icon.get_rowstride(),
-							         4, // BPP
-							         0); // Textureflags, none handled yet
-		this._icon.set_width(16);
-		this._icon.set_height(16);
-		//this._icon = app.create_icon_texture(16);
+		let mini_icon = this.metaWindow.icon;
+		let icon = new Clutter.Texture();
+		icon.set_from_rgb_data(mini_icon.get_pixels(),
+							   mini_icon.get_has_alpha(),
+							   mini_icon.get_width(),
+							   mini_icon.get_height(),
+							   mini_icon.get_rowstride(),
+							   4, // BPP
+							   0); // Textureflags, none handled yet
+		this._icon = new St.Bin({ style_class: 'window-icon',
+		                          child: icon });
 		this._itemBox.add(this._icon, {x_fill: false, y_fill: false});
 
 		// Window name
-		this._label = new St.Label({style_class: 'window-list-item-label'});
+		this._label = new St.Label({style_class: 'window-label'});
 		this._itemBox.add(this._label, {x_fill: true,  y_fill: false});
 		this._onTitleChanged();
 
 		// Signals
 		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
-		this.actor.connect('button-press-event',
-		        Lang.bind(this, this._onButtonPress));
+		this.actor.connect('clicked',
+		        Lang.bind(this, this._onClicked));
 		this.actor.connect('allocation-changed',
 		        Lang.bind(this, this._onAllocationChanged));
 
@@ -217,16 +222,21 @@ const WindowListItem = new Lang.Class({
 		this._menu.destroy();
 	},
 
-	_onButtonPress: function (actor, event) {
-		let but = event.get_button();
-		if (but === 1) {
+	_onClicked: function (actor, button) {
+		if (this._menu.isOpen) {
 			this._menu.close();
+			return;
+		}
+
+		if (button === 1) {
 			if (this.metaWindow.has_focus())
 				this.metaWindow.minimize();
 			else
 				this.metaWindow.activate(global.get_current_time());
-		} else if (but === 3) {
-			this._menu.toggle();
+		} else if (button === 2) {
+			this.metaWindow.delete(global.get_current_time());
+		} else if (button === 3) {
+			this._menu.open();
 		}
 	},
 
@@ -251,9 +261,9 @@ const WindowListItem = new Lang.Class({
 
 	_onFocusChanged: function () {
 		if (this.metaWindow.has_focus()) {
-			this._itemBox.add_style_pseudo_class('focused');
+			this.actor.add_style_pseudo_class('focused');
 		} else {
-			this._itemBox.remove_style_pseudo_class('focused');
+			this.actor.remove_style_pseudo_class('focused');
 		}
 	},
 
@@ -269,7 +279,6 @@ const WindowList = new Lang.Class({
 		this._windows = [];
 
 		this.actor = new St.BoxLayout({name: 'windowList',
-		                               style_class: 'window-list-box',
 	                                   reactive: true});
 		this.actor._delegate = this;
 
@@ -402,8 +411,7 @@ const BottomPanel = new Lang.Class({
 
 	_init: function () {
 		// Layout
-		this.actor = new St.BoxLayout({style_class: 'bottom-panel',
-		                               name: 'bottomPanel'});
+		this.actor = new St.BoxLayout({name: 'bottomPanel'});
 		this.actor._delegate = this;
 
 		// PopupMenuManager needs this.actor to be defined
