@@ -164,18 +164,9 @@ const WindowListItem = new Lang.Class({
 		this.menu.actor.hide();
 
 		// Window icon
-		let mini_icon = this.metaWindow.icon;
-		let icon = new Clutter.Texture();
-		icon.set_from_rgb_data(mini_icon.get_pixels(),
-							   mini_icon.get_has_alpha(),
-							   mini_icon.get_width(),
-							   mini_icon.get_height(),
-							   mini_icon.get_rowstride(),
-							   4, // BPP
-							   0); // Textureflags, none handled yet
-		this._icon = new St.Bin({ style_class: 'window-icon',
-		                          child: icon });
+		this._icon = new St.Bin({ style_class: 'window-icon' });
 		this._itemBox.add(this._icon, {x_fill: false, y_fill: false});
+		this._onIconChanged();
 
 		// Window name
 		this._label = new St.Label({style_class: 'window-label'});
@@ -191,7 +182,10 @@ const WindowListItem = new Lang.Class({
 
 		this._ID_notify_title =
 		        this.metaWindow.connect('notify::title',
-		               Lang.bind(this, this._onTitleChanged));
+		        		Lang.bind(this, this._onTitleChanged));
+		this._ID_notify_icon =
+				this.metaWindow.connect('notify::mini-icon',
+						Lang.bind(this, this._onIconChanged));
 		this._ID_notify_minimize =
 		        this.metaWindow.connect('notify::minimized',
 				        Lang.bind(this, this._onMinimizedChanged));
@@ -203,6 +197,7 @@ const WindowListItem = new Lang.Class({
 	_onDestroy: function () {
 		this.metaWindow.set_icon_geometry(null);
 		this.metaWindow.disconnect(this._ID_notify_title);
+		this.metaWindow.disconnect(this._ID_notify_icon);
 		this.metaWindow.disconnect(this._ID_notify_minimize);
 		global.display.disconnect( this._ID_notify_focus);
 		this.menu.destroy();
@@ -233,6 +228,20 @@ const WindowListItem = new Lang.Class({
 		[rect.width, rect.height] = this.actor.get_transformed_size();
 
 		this.metaWindow.set_icon_geometry(rect);
+	},
+
+	_onIconChanged: function () {
+		let icon = new Clutter.Texture();
+		let mini_icon = this.metaWindow.mini_icon;
+		icon.set_from_rgb_data(mini_icon.get_pixels(),
+							   mini_icon.get_has_alpha(),
+							   mini_icon.get_width(),
+							   mini_icon.get_height(),
+							   mini_icon.get_rowstride(),
+							   4, // BPP
+							   0); // Textureflags, none handled yet
+
+		this._icon.set_child(icon);
 	},
 
 	_onTitleChanged: function () {
