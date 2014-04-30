@@ -54,7 +54,7 @@ const OPTIONS = {
 	MOVE_PREVIOUS: {
 		title: "Move to previous workspace",
 		type: OPTION_TYPES.BUTTON,
-		callback: function(item, event, metaWindow) {
+		callback: function (item, event, metaWindow) {
 			metaWindow.change_workspace_by_index(
 			        metaWindow.get_workspace().index() - 1,
 					false,
@@ -81,7 +81,7 @@ const OPTIONS = {
 	QUIT: {
 		title: "Quit",
 		type: OPTION_TYPES.BUTTON,
-		callback: function(item, event, metaWindow) {
+		callback: function (item, event, metaWindow) {
 			this._app.request_quit();
 		},
 	},
@@ -103,12 +103,12 @@ const WindowOptionsMenu = new Lang.Class({
 	Name: "WindowOptionsMenu",
 	Extends: PopupMenu.PopupMenu,
 
-	_init: function (windowlistitem) {
-		this.parent(windowlistitem.actor, 0.0, St.Side.BOTTOM);
+	_init: function (windowButton) {
+		this.parent(windowButton.actor, 0.0, St.Side.BOTTOM);
 
+		this._window = windowButton.metaWindow;
 		let tracker = Shell.WindowTracker.get_default();
-		this._app = tracker.get_window_app(windowlistitem.metaWindow);
-		this._window = windowlistitem;
+		this._app = tracker.get_window_app(this._window);
 
 		OPTION_MENU.forEach(this._addItem, this);
 	},
@@ -126,7 +126,7 @@ const WindowOptionsMenu = new Lang.Class({
 
 			menu_item = new PopupMenu.PopupMenuItem(item_name);
 			menu_item.connect('activate',
-					Lang.bind(this, option.callback, this._window.metaWindow));
+					Lang.bind(this, option.callback, this._window));
 		}
 
 		/* Some special cases */
@@ -141,14 +141,14 @@ const WindowOptionsMenu = new Lang.Class({
 	},
 });
 
-const WindowListItem = new Lang.Class({
-	Name: "WindowListItem",
+const WindowButton = new Lang.Class({
+	Name: "WindowButton",
 
 	_init: function (metaWindow) {
 		this.metaWindow = metaWindow;
-		// A `WindowListItem` is actored by an StButton containing
+		// A `WindowButton` is actored by an StButton containing
 		// an StBoxLayout with an StLabel and an StBin
-		this._itemBox = new St.BoxLayout({});
+		this._itemBox = new St.BoxLayout();
 		this.actor = new St.Button({ style_class: 'window-button',
 		                             can_focus: true,
 									 x_fill: true,
@@ -159,6 +159,7 @@ const WindowListItem = new Lang.Class({
 		                             child: this._itemBox, });
 		this.actor._delegate = this;
 
+		// Window menu
 		this.menu = new WindowOptionsMenu(this);
 		Main.uiGroup.add_actor(this.menu.actor);
 		this.menu.actor.hide();
@@ -173,13 +174,9 @@ const WindowListItem = new Lang.Class({
 		this._itemBox.add(this._label, {x_fill: true,  y_fill: false});
 		this._onTitleChanged();
 
-		// Signals
-		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
-		this.actor.connect('clicked',
-		        Lang.bind(this, this._onClicked));
-		this.actor.connect('allocation-changed',
-		        Lang.bind(this, this._onAllocationChanged));
+		this._onFocusChanged();
 
+		// Signals
 		this._ID_notify_title =
 		        this.metaWindow.connect('notify::title',
 		        		Lang.bind(this, this._onTitleChanged));
@@ -190,8 +187,13 @@ const WindowListItem = new Lang.Class({
 		        this.metaWindow.connect('notify::minimized',
 				        Lang.bind(this, this._onMinimizedChanged));
 		this._ID_notify_focus =
-				global.display.connect('notify::focus-window',
+				this.metaWindow.connect('notify::appears-focused',
 				        Lang.bind(this, this._onFocusChanged));
+
+		this.actor.connect('allocation-changed',
+		        Lang.bind(this, this._onAllocationChanged));
+		this.actor.connect('clicked', Lang.bind(this, this._onClicked));
+		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
 	},
 
 	_onDestroy: function () {
@@ -199,7 +201,7 @@ const WindowListItem = new Lang.Class({
 		this.metaWindow.disconnect(this._ID_notify_title);
 		this.metaWindow.disconnect(this._ID_notify_icon);
 		this.metaWindow.disconnect(this._ID_notify_minimize);
-		global.display.disconnect( this._ID_notify_focus);
+		this.metaWindow.disconnect(this._ID_notify_focus);
 		this.menu.destroy();
 	},
 
@@ -238,7 +240,7 @@ const WindowListItem = new Lang.Class({
 							   mini_icon.get_width(),
 							   mini_icon.get_height(),
 							   mini_icon.get_rowstride(),
-							   4, // BPP
+							   4,  // BPP
 							   0); // Textureflags, none handled yet
 
 		this._icon.set_child(icon);
@@ -246,7 +248,7 @@ const WindowListItem = new Lang.Class({
 
 	_onTitleChanged: function () {
 		let formatString = this.metaWindow.minimized ? '[%s]' : '%s';
-		this._label.text = formatString.format(this.metaWindow.title);
+		this._label.set_text(formatString.format(this.metaWindow.title));
 	},
 
 	_onMinimizedChanged: function () {
@@ -269,57 +271,53 @@ const WindowList = new Lang.Class({
 
 	_init: function (menuManager) {
 		this._menuManager = menuManager;
-		this._ws = {workspace: undefined, _ID_window_added: 0,
-		                                  _ID_window_removed: 0};
+		this._workspace = global.screen.get_active_workspace();
 		this._windows = [];
 
 		this.actor = new St.BoxLayout({name: 'windowList',
 	                                   reactive: true});
 		this.actor._delegate = this;
 
+		this._reloadItems();
+
 		// Signals
-		this.actor.connect('destroy',
-		        Lang.bind(this, this._onDestroy));
+		this._ID_switch_workspace =
+				global.window_manager.connect('switch-workspace',
+						Lang.bind(this, this._onSwitchWorkspace));
+		this._ID_notify_n_workspaces =
+				global.screen.connect('notify::n-workspaces',
+						Lang.bind(this, this._onSwitchWorkspace));
+		this._ID_window_added =
+				this._workspace.connect('window-added',
+						Lang.bind(this, this._windowAdded));
+		this._ID_window_removed =
+				this._workspace.connect('window-removed',
+						Lang.bind(this, this._windowRemoved));
+
 		this.actor.connect('scroll-event',
 		        Lang.bind(this, this._onScrollEvent));
-
-		let wm = global.window_manager;
-		this._ID_switch_workspace = wm.connect('switch-workspace',
-		        Lang.bind(this, this._onSwitchWorkspace));
-
-		this._ID_screen_notify = global.screen.connect('notify::n-workspaces',
-		        Lang.bind(this, this._onSwitchWorkspace));
-		this._onSwitchWorkspace();
+		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
 	},
 
 	_onDestroy: function () {
-		let screen = global.screen;
-		screen.disconnect(this._ID_screen_notify);
+		global.screen.disconnect(this._ID_notify_n_workspaces);
+		global.window_manager.disconnect(this._ID_switch_workspace);
 
-		let wm = global.window_manager;
-		wm.disconnect(this._ID_switch_workspace);
-
-		let ws = this._ws;
-		ws.workspace.disconnect(ws._ID_window_added);
-		ws.workspace.disconnect(ws._ID_window_removed);
+		this._workspace.disconnect(this._ID_window_added);
+		this._workspace.disconnect(this._ID_window_removed);
 	},
 
 	_onSwitchWorkspace: function () {
 		// Start by disconnecting all signals from the old workspace
-		let ws = this._ws;
-
-		if (ws._ID_window_added)
-			ws.workspace.disconnect(ws._ID_window_added);
-
-		if (ws._ID_window_removed)
-			ws.workspace.disconnect(ws._ID_window_removed);
+		this._workspace.disconnect(this._ID_window_added);
+		this._workspace.disconnect(this._ID_window_removed);
 
 		// Now connect the new signals
-		ws.workspace = global.screen.get_active_workspace();
+		this._workspace = global.screen.get_active_workspace();
 
-		ws._ID_window_added = ws.workspace.connect('window-added',
+		this._ID_window_added = this._workspace.connect('window-added',
 		        Lang.bind(this, this._windowAdded));
-		ws._ID_window_removed = ws.workspace.connect('window-removed',
+		this._ID_window_removed = this._workspace.connect('window-removed',
 		        Lang.bind(this, this._windowRemoved));
 		this._reloadItems();
 	},
@@ -379,10 +377,11 @@ const WindowList = new Lang.Class({
 		// Interesting windows exclude stuff like docks, desktop, etc...
 		if (!metaWindow || !tracker.is_window_interesting(metaWindow))
 			return;
-		let item = new WindowListItem(metaWindow);
-		this._windows.push(item);
-		this.actor.add(item.actor);
-		this._menuManager.addMenu(item.menu);
+
+		let button = new WindowButton(metaWindow);
+		this._windows.push(button);
+		this.actor.add(button.actor);
+		this._menuManager.addMenu(button.menu);
 	},
 
 	_reloadItems: function () {
@@ -395,9 +394,7 @@ const WindowList = new Lang.Class({
 			return w1.get_stable_sequence() - w2.get_stable_sequence();
 		});
 
-		for (let i = 0; i < windows.length; i++) {
-			this._addWindow(windows[i]);
-		}
+		windows.forEach(this._addWindow, this);
 	}
 });
 
@@ -416,8 +413,6 @@ const BottomPanel = new Lang.Class({
 		this.actor.add(this._windowList.actor, {expand: true});
 
 		// Signals
-		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
-		this.actor.connect('style-changed', Lang.bind(this, this.relayout));
 		this._ID_monitors_changed = global.screen.connect(
 		        'monitors-changed', Lang.bind(this, this.relayout));
 		this._ID_fullscreen_changed = global.screen.connect(
@@ -426,6 +421,9 @@ const BottomPanel = new Lang.Class({
 				Lang.bind(this, this._showOverview));
 		this._ID_overview_hide = Main.overview.connect('hidden',
 				Lang.bind(this,this._hideOverview));
+
+		this.actor.connect('style-changed', Lang.bind(this, this.relayout));
+		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
 	},
 
 	relayout: function () {
@@ -464,6 +462,7 @@ const BottomPanel = new Lang.Class({
 		Main.overview.disconnect(this._ID_overview_hide);
 
 		Main.messageTray.actor.anchor_y = 0;
+		Main.messageTray._notificationWidget.anchor_y = 0;
 	}
 });
 
