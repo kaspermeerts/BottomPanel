@@ -78,13 +78,6 @@ const OPTIONS = {
 			metaWindow.delete(global.get_current_time());
 		},
 	},
-	QUIT: {
-		title: "Quit",
-		type: OPTION_TYPES.BUTTON,
-		callback: function (item, event, metaWindow) {
-			this._app.request_quit();
-		},
-	},
 };
 
 const OPTION_MENU = [
@@ -96,9 +89,10 @@ const OPTION_MENU = [
 	OPTIONS.MOVE_NEXT,
 	OPTIONS.SEPARATOR,
 	OPTIONS.CLOSE,
-	OPTIONS.QUIT,
 ];
 
+// TODO: Don't extend the PopupMenu class, it's completely unnecessary
+// and inheritance is considered harmful in general
 const WindowOptionsMenu = new Lang.Class({
 	Name: "WindowOptionsMenu",
 	Extends: PopupMenu.PopupMenu,
@@ -107,8 +101,6 @@ const WindowOptionsMenu = new Lang.Class({
 		this.parent(windowButton.actor, 0.0, St.Side.BOTTOM);
 
 		this._window = windowButton.metaWindow;
-		let tracker = Shell.WindowTracker.get_default();
-		this._app = tracker.get_window_app(this._window);
 
 		OPTION_MENU.forEach(this._addItem, this);
 	},
@@ -119,12 +111,7 @@ const WindowOptionsMenu = new Lang.Class({
 		if (option === OPTIONS.SEPARATOR) {
 			menu_item = new PopupMenu.PopupSeparatorMenuItem();
 		} else {
-			let appName = this._app.get_name();
-			let item_name = option.title;
-			if (option === OPTIONS.QUIT)
-				item_name += " " + appName;
-
-			menu_item = new PopupMenu.PopupMenuItem(item_name);
+			menu_item = new PopupMenu.PopupMenuItem(option.title);
 			menu_item.connect('activate',
 					Lang.bind(this, option.callback, this._window));
 		}
@@ -173,22 +160,19 @@ const WindowButton = new Lang.Class({
 		this._label = new St.Label({style_class: 'window-label'});
 		this._itemBox.add(this._label, {x_fill: true,  y_fill: false});
 		this._onTitleChanged();
-
 		this._onFocusChanged();
 
 		// Signals
-		this._ID_notify_title =
-		        this.metaWindow.connect('notify::title',
-		        		Lang.bind(this, this._onTitleChanged));
-		this._ID_notify_icon =
-				this.metaWindow.connect('notify::mini-icon',
-						Lang.bind(this, this._onIconChanged));
-		this._ID_notify_minimize =
-		        this.metaWindow.connect('notify::minimized',
-				        Lang.bind(this, this._onMinimizedChanged));
-		this._ID_notify_focus =
-				this.metaWindow.connect('notify::appears-focused',
-				        Lang.bind(this, this._onFocusChanged));
+		let win = this.metaWindow;
+
+		this._ID_notify_title = win.connect('notify::title',
+				Lang.bind(this, this._onTitleChanged));
+		this._ID_notify_icon = win.connect('notify::mini-icon',
+				Lang.bind(this, this._onIconChanged));
+		this._ID_notify_minimize = win.connect('notify::minimized',
+				Lang.bind(this, this._onMinimizedChanged));
+		this._ID_notify_focus = win.connect('notify::appears-focused',
+				Lang.bind(this, this._onFocusChanged));
 
 		this.actor.connect('allocation-changed',
 		        Lang.bind(this, this._onAllocationChanged));
@@ -294,8 +278,7 @@ const WindowList = new Lang.Class({
 				this._workspace.connect('window-removed',
 						Lang.bind(this, this._windowRemoved));
 
-		this.actor.connect('scroll-event',
-		        Lang.bind(this, this._onScrollEvent));
+		this.actor.connect('scroll-event', Lang.bind(this, this._onScroll));
 		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
 	},
 
@@ -344,7 +327,7 @@ const WindowList = new Lang.Class({
 		}
 	},
 
-	_onScrollEvent: function (actor, event) {
+	_onScroll: function (actor, event) {
 		let diff = 0;
 		if (event.get_scroll_direction() === Clutter.ScrollDirection.DOWN)
 			diff = 1;
