@@ -11,6 +11,7 @@ const Lang = imports.lang;
 const Meta = imports.gi.Meta;
 const Shell = imports.gi.Shell;
 const St = imports.gi.St;
+const Cogl = imports.gi.Cogl;
 
 const Main = imports.ui.main;
 const PopupMenu = imports.ui.popupMenu;
@@ -217,17 +218,30 @@ const WindowButton = new Lang.Class({
 	},
 
 	_onIconChanged: function () {
-		let icon = new Clutter.Texture();
-		let mini_icon = this.metaWindow.mini_icon;
-		icon.set_from_rgb_data(mini_icon.get_pixels(),
-							   mini_icon.get_has_alpha(),
-							   mini_icon.get_width(),
-							   mini_icon.get_height(),
-							   mini_icon.get_rowstride(),
-							   4,  // BPP
-							   0); // Textureflags, none handled yet
+		let icon_image = new Clutter.Image();
+		let icon = this.metaWindow.mini_icon;
 
-		this._icon.set_child(icon);
+		let format = icon.get_has_alpha() ? Cogl.PixelFormat.RGBA_8888 :
+		                                    Cogl.PixelFormat.RGB_888;
+		try {
+			icon_image.set_bytes(icon.get_pixels(),
+			                     Cogl.PixelFormat.RGBA_8888,
+			                     icon.get_width(),
+			                     icon.get_height(),
+			                     icon.get_rowstride());
+		} catch (e) {
+			global.log("Couldn't set image data");
+			return;
+		}
+
+		let icon_actor = new Clutter.Actor();
+		icon_actor.set_content_scaling_filters(
+			Clutter.ScalingFilter.TRILINEAR,
+			Clutter.ScalingFilter.LINEAR);
+		icon_actor.set_content_gravity(Clutter.Gravity.NORTH_WEST);
+		icon_actor.set_content(icon_image);
+		icon_actor.set_size(icon.get_width(), icon.get_height());
+		this._icon.set_child(icon_actor);
 	},
 
 	_onTitleChanged: function () {
