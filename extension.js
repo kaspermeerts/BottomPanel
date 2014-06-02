@@ -9,7 +9,6 @@
 const Clutter = imports.gi.Clutter;
 const Lang = imports.lang;
 const Meta = imports.gi.Meta;
-const Shell = imports.gi.Shell;
 const St = imports.gi.St;
 const Cogl = imports.gi.Cogl;
 
@@ -370,9 +369,7 @@ const WindowList = new Lang.Class({
 	},
 
 	_addWindow: function (metaWindow) {
-		let tracker = Shell.WindowTracker.get_default();
-		// Interesting windows exclude stuff like docks, desktop, etc...
-		if (!metaWindow || !tracker.is_window_interesting(metaWindow))
+		if (metaWindow.is_skip_taskbar())
 			return;
 
 		let button = new WindowButton(metaWindow);
