@@ -13,120 +13,6 @@ const St = imports.gi.St;
 const Cogl = imports.gi.Cogl;
 
 const Main = imports.ui.main;
-const PopupMenu = imports.ui.popupMenu;
-
-const OPTION_TYPES = {
-	BUTTON: "Button",
-	SWITCH: "Switch",
-	SEPARATOR: "Separator"
-};
-
-// TODO Make a Class of all these singleton objects,
-// hoist some of the _addItem logic in them
-// TODO Sticky windows and Above all windows (Metawindow.sticky...)
-const OPTIONS = {
-	SEPARATOR: {
-		type: OPTION_TYPES.SEPARATOR,
-	},
-	MINIMIZE: {
-		title: "Minimize",
-		type: OPTION_TYPES.BUTTON,
-		callback: function (item, event, metaWindow) {
-			metaWindow.minimize();
-		},
-	},
-	RESTORE: {
-		title: "Restore",
-		type: OPTION_TYPES.BUTTON,
-		callback: function (item, event, metaWindow) {
-			metaWindow.unmaximize(Meta.MaximizeFlags.HORIZONTAL |
-			                      Meta.MaximizeFlags.VERTICAL);
-		},
-	},
-	MAXIMIZE: {
-		title: "Maximize",
-		type: OPTION_TYPES.BUTTON,
-		callback: function (item, event, metaWindow) {
-			metaWindow.maximize(Meta.MaximizeFlags.HORIZONTAL |
-			                    Meta.MaximizeFlags.VERTICAL);
-		},
-	},
-	MOVE_PREVIOUS: {
-		title: "Move to previous workspace",
-		type: OPTION_TYPES.BUTTON,
-		callback: function (item, event, metaWindow) {
-			metaWindow.change_workspace_by_index(
-			        metaWindow.get_workspace().index() - 1,
-					false,
-					global.get_current_time());
-		},
-	},
-	MOVE_NEXT: {
-		title: "Move to next workspace",
-		type: OPTION_TYPES.BUTTON,
-		callback: function (item, event, metaWindow) {
-			metaWindow.change_workspace_by_index(
-			        metaWindow.get_workspace().index() + 1,
-					false,
-					global.get_current_time());
-		},
-	},
-	CLOSE: {
-		title: "Close window",
-		type: OPTION_TYPES.BUTTON,
-		callback: function (item, event, metaWindow) {
-			metaWindow.delete(global.get_current_time());
-		},
-	},
-};
-
-const OPTION_MENU = [
-	OPTIONS.MINIMIZE,
-	OPTIONS.RESTORE,
-	OPTIONS.MAXIMIZE,
-	OPTIONS.SEPARATOR,
-	OPTIONS.MOVE_PREVIOUS,
-	OPTIONS.MOVE_NEXT,
-	OPTIONS.SEPARATOR,
-	OPTIONS.CLOSE,
-];
-
-// TODO: Don't extend the PopupMenu class, it's completely unnecessary
-// and inheritance is considered harmful in general
-const WindowOptionsMenu = new Lang.Class({
-	Name: "WindowOptionsMenu",
-	Extends: PopupMenu.PopupMenu,
-
-	_init: function (windowButton) {
-		this.parent(windowButton.actor, 0.0, St.Side.BOTTOM);
-
-		this._window = windowButton.metaWindow;
-
-		OPTION_MENU.forEach(this._addItem, this);
-	},
-
-	_addItem: function (option) {
-		let menu_item;
-
-		if (option === OPTIONS.SEPARATOR) {
-			menu_item = new PopupMenu.PopupSeparatorMenuItem();
-		} else {
-			menu_item = new PopupMenu.PopupMenuItem(option.title);
-			menu_item.connect('activate',
-					Lang.bind(this, option.callback, this._window));
-		}
-
-		/* Some special cases */
-		if (option === OPTIONS.MOVE_PREVIOUS)
-			if (global.screen.get_active_workspace_index() === 0)
-				menu_item.setSensitive(false);
-		if (option === OPTIONS.MOVE_NEXT)
-			if (global.screen.get_active_workspace_index() === global.screen.n_workspaces)
-				menu_item.setSensitive(false);
-
-		this.addMenuItem(menu_item);
-	},
-});
 
 const WindowButton = new Lang.Class({
 	Name: "WindowButton",
@@ -141,15 +27,9 @@ const WindowButton = new Lang.Class({
 									 x_fill: true,
 									 y_fill:true,
 									 button_mask: St.ButtonMask.ONE |
-									              St.ButtonMask.TWO |
-												  St.ButtonMask.THREE,
+									              St.ButtonMask.TWO,
 		                             child: this._itemBox, });
 		this.actor._delegate = this;
-
-		// Window menu
-		this.menu = new WindowOptionsMenu(this);
-		Main.uiGroup.add_actor(this.menu.actor);
-		this.menu.actor.hide();
 
 		// Window icon
 		this._icon = new St.Bin({ style_class: 'window-icon' });
@@ -186,15 +66,9 @@ const WindowButton = new Lang.Class({
 		this.metaWindow.disconnect(this._ID_notify_icon);
 		this.metaWindow.disconnect(this._ID_notify_minimize);
 		this.metaWindow.disconnect(this._ID_notify_focus);
-		this.menu.destroy();
 	},
 
 	_onClicked: function (actor, button) {
-		if (this.menu.isOpen) {
-			this.menu.close();
-			return;
-		}
-
 		if (button === 1) {
 			if (this.metaWindow.has_focus())
 				this.metaWindow.minimize();
@@ -202,8 +76,6 @@ const WindowButton = new Lang.Class({
 				this.metaWindow.activate(global.get_current_time());
 		} else if (button === 2) {
 			this.metaWindow.delete(global.get_current_time());
-		} else if (button === 3) {
-			this.menu.open();
 		}
 	},
 
@@ -266,8 +138,7 @@ const WindowButton = new Lang.Class({
 const WindowList = new Lang.Class({
 	Name: "WindowList",
 
-	_init: function (menuManager) {
-		this._menuManager = menuManager;
+	_init: function () {
 		this._workspace = global.screen.get_active_workspace();
 		this._windows = [];
 
@@ -375,7 +246,6 @@ const WindowList = new Lang.Class({
 		let button = new WindowButton(metaWindow);
 		this._windows.push(button);
 		this.actor.add(button.actor);
-		this._menuManager.addMenu(button.menu);
 	},
 
 	_reloadItems: function () {
@@ -400,10 +270,7 @@ const BottomPanel = new Lang.Class({
 		this.actor = new St.BoxLayout({name: 'bottomPanel'});
 		this.actor._delegate = this;
 
-		// PopupMenuManager needs this.actor to be defined
-		this.menus = new PopupMenu.PopupMenuManager(this);
-
-		this._windowList = new WindowList(this.menus);
+		this._windowList = new WindowList();
 		this.actor.add(this._windowList.actor, {expand: true});
 
 		// Signals
