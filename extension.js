@@ -152,22 +152,13 @@ const WindowList = new Lang.Class({
 		this._ID_switch_workspace =
 				global.window_manager.connect('switch-workspace',
 						Lang.bind(this, this._onSwitchWorkspace));
-		this._ID_notify_n_workspaces =
-				global.screen.connect('notify::n-workspaces',
-						Lang.bind(this, this._onSwitchWorkspace));
-		this._ID_window_added =
-				this._workspace.connect('window-added',
-						Lang.bind(this, this._windowAdded));
-		this._ID_window_removed =
-				this._workspace.connect('window-removed',
-						Lang.bind(this, this._windowRemoved));
+		this._onSwitchWorkspace();
 
 		this.actor.connect('scroll-event', Lang.bind(this, this._onScroll));
 		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
 	},
 
 	_onDestroy: function () {
-		global.screen.disconnect(this._ID_notify_n_workspaces);
 		global.window_manager.disconnect(this._ID_switch_workspace);
 
 		this._workspace.disconnect(this._ID_window_added);
@@ -176,8 +167,10 @@ const WindowList = new Lang.Class({
 
 	_onSwitchWorkspace: function () {
 		// Start by disconnecting all signals from the old workspace
-		this._workspace.disconnect(this._ID_window_added);
-		this._workspace.disconnect(this._ID_window_removed);
+		if (this._ID_window_added)
+			this._workspace.disconnect(this._ID_window_added);
+		if (this._ID_window_removed)
+			this._workspace.disconnect(this._ID_window_removed);
 
 		// Now connect the new signals
 		this._workspace = global.screen.get_active_workspace();
