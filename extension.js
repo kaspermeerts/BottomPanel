@@ -89,30 +89,17 @@ const WindowButton = new Lang.Class({
 	},
 
 	_onIconChanged: function () {
-		let icon_image = new Clutter.Image();
-		let icon = this.metaWindow.mini_icon;
+		let textureCache = St.TextureCache.get_default();
+		let icon = textureCache.bind_cairo_surface_property(
+			this.metaWindow, 'mini-icon');
 
-		let format = icon.get_has_alpha() ? Cogl.PixelFormat.RGBA_8888 :
-		                                    Cogl.PixelFormat.RGB_888;
-		try {
-			icon_image.set_bytes(icon.get_pixels(),
-			                     Cogl.PixelFormat.RGBA_8888,
-			                     icon.get_width(),
-			                     icon.get_height(),
-			                     icon.get_rowstride());
-		} catch (e) {
-			global.log("Couldn't set image data");
-			return;
-		}
-
-		let icon_actor = new Clutter.Actor();
-		icon_actor.set_content_scaling_filters(
+		icon.set_content_scaling_filters(
 			Clutter.ScalingFilter.TRILINEAR,
 			Clutter.ScalingFilter.LINEAR);
-		icon_actor.set_content_gravity(Clutter.Gravity.NORTH_WEST);
-		icon_actor.set_content(icon_image);
-		icon_actor.set_size(icon.get_width(), icon.get_height());
-		this._icon.set_child(icon_actor);
+		icon.set_content_gravity(Clutter.Gravity.NORTH_WEST);
+		icon.set_size(icon.get_width(), icon.get_height());
+		this._icon.destroy_all_children();
+		this._icon.set_child(icon);
 	},
 
 	_onTitleChanged: function () {
@@ -269,8 +256,6 @@ const BottomPanel = new Lang.Class({
 		// Signals
 		this._ID_monitors_changed = global.screen.connect(
 		        'monitors-changed', Lang.bind(this, this.relayout));
-		this._ID_fullscreen_changed = global.screen.connect(
-		        'in-fullscreen-changed', Lang.bind(this, this._updateAnchor));
 		this._ID_overview_show = Main.overview.connect('showing',
 				Lang.bind(this, this._showOverview));
 		this._ID_overview_hide = Main.overview.connect('hidden',
@@ -287,26 +272,15 @@ const BottomPanel = new Lang.Class({
 		// Only with these precise measurements will windows snap to it
 		this.actor.set_position(prim.x, prim.y + prim.height - h);
 		this.actor.set_size(prim.width, -1);
-
-		this._updateAnchor();
 	},
 
 	_showOverview: function () {
 		this.actor.hide();
-		this._updateAnchor();
 	},
 
 	_hideOverview: function () {
 		if (!Main.layoutManager.primaryMonitor.inFullscreen)
 			this.actor.show();
-		this._updateAnchor();
-	},
-
-	_updateAnchor: function () {
-		let h = this.actor.visible ? this.actor.height : 0;
-
-		Main.messageTray.actor.anchor_y = h;
-		Main.messageTray._notificationWidget.anchor_y = h;
 	},
 
 	_onDestroy: function () {
@@ -314,9 +288,6 @@ const BottomPanel = new Lang.Class({
 		global.screen.disconnect(this._ID_fullscreen_changed);
 		Main.overview.disconnect(this._ID_overview_show);
 		Main.overview.disconnect(this._ID_overview_hide);
-
-		Main.messageTray.actor.anchor_y = 0;
-		Main.messageTray._notificationWidget.anchor_y = 0;
 	}
 });
 
