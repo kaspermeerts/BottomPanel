@@ -1,5 +1,5 @@
 {
-	"shell-version": ["3.16"],
+	"shell-version": ["3.18"],
 	"uuid": "Bottom_Panel@kaspermeerts.gmail.com",
 	"name": "Bottom Panel",
 	"description": "Add a bottom panel with a window list to the shell",
