@@ -10,7 +10,6 @@ const Clutter = imports.gi.Clutter;
 const Lang = imports.lang;
 const Meta = imports.gi.Meta;
 const St = imports.gi.St;
-const Cogl = imports.gi.Cogl;
 
 const Main = imports.ui.main;
 
@@ -126,7 +125,7 @@ const WindowList = new Lang.Class({
 	Name: "WindowList",
 
 	_init: function () {
-		this._workspace = global.screen.get_active_workspace();
+		this._workspace = global.workspace_manager.get_active_workspace();
 		this._windows = [];
 
 		this.actor = new St.BoxLayout({name: 'windowList',
@@ -160,7 +159,7 @@ const WindowList = new Lang.Class({
 			this._workspace.disconnect(this._ID_window_removed);
 
 		// Now connect the new signals
-		this._workspace = global.screen.get_active_workspace();
+		this._workspace = global.workspace_manager.get_active_workspace();
 
 		this._ID_window_added = this._workspace.connect('window-added',
 		        Lang.bind(this, this._windowAdded));
@@ -170,14 +169,14 @@ const WindowList = new Lang.Class({
 	},
 
 	_windowAdded: function (workspace, window) {
-		if (workspace.index() !== global.screen.get_active_workspace_index())
+		if (workspace.index() !== global.workspace_manager.get_active_workspace_index())
 			return;
 
 		this._addWindow(window);
 	},
 
 	_windowRemoved: function (workspace, window) {
-		if (workspace.index() !== global.screen.get_active_workspace_index())
+		if (workspace.index() !== global.workspace_manager.get_active_workspace_index())
 			return;
 
 		for (let i = 0; i < this._windows.length; i++) {
@@ -200,23 +199,17 @@ const WindowList = new Lang.Class({
 		else
 			return;
 
-		let ws = this._windows;
-		let focus_i = -1;
-		for (let i = 0; i < ws.length; i++) {
-			if (ws[i].metaWindow.has_focus()) {
-				focus_i = i;
-			}
-		}
+		let focus_i = this._windows.findIndex(w => w.metaWindow.has_focus());
 		if (focus_i === -1)
 			return;
 
 		let new_i = focus_i + diff;
 		if (new_i < 0)
 			new_i = 0;
-		else if (new_i >= ws.length)
-			new_i = ws.length - 1;
+		else if (new_i >= this._windows.length)
+			new_i = this._windows.length - 1;
 
-		ws[new_i].metaWindow.activate(global.get_current_time());
+		this._windows[new_i].metaWindow.activate(global.get_current_time());
 	},
 
 	_addWindow: function (metaWindow) {
@@ -232,11 +225,9 @@ const WindowList = new Lang.Class({
 		this.actor.destroy_all_children();
 		this._windows = [];
 
-		let metaWorkspace = global.screen.get_active_workspace();
+		let metaWorkspace = global.workspace_manager.get_active_workspace();
 		let windows = metaWorkspace.list_windows();
-		windows.sort(function (w1, w2) {
-			return w1.get_stable_sequence() - w2.get_stable_sequence();
-		});
+		windows.sort((a, b) => a.get_stable_sequence() - b.get_stable_sequence());
 
 		windows.forEach(this._addWindow, this);
 	}
@@ -254,7 +245,7 @@ const BottomPanel = new Lang.Class({
 		this.actor.add(this._windowList.actor, {expand: true});
 
 		// Signals
-		this._ID_monitors_changed = global.screen.connect(
+		this._ID_monitors_changed = Meta.MonitorManager.get().connect(
 		        'monitors-changed', Lang.bind(this, this.relayout));
 		this._ID_overview_show = Main.overview.connect('showing',
 				Lang.bind(this, this._showOverview));
@@ -284,8 +275,8 @@ const BottomPanel = new Lang.Class({
 	},
 
 	_onDestroy: function () {
-		global.screen.disconnect(this._ID_monitors_changed);
-		global.screen.disconnect(this._ID_fullscreen_changed);
+		Meta.MonitorManager.get().disconnect(this._ID_monitors_changed);
+		Meta.MonitorManager.get().disconnect(this._ID_fullscreen_changed);
 		Main.overview.disconnect(this._ID_overview_show);
 		Main.overview.disconnect(this._ID_overview_hide);
 	}
