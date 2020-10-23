@@ -1,73 +1,66 @@
 // Bottom panel extension
-// Copyright (C) 2014 Kasper Maurice Meerts
+// Copyright (C) 2020 Kasper Maurice Meerts
 // License: GPLv2+
 // Many inspiration gotten from the extensions by
 // R.M. Yorston, gcampax and Mathematical Coffee
 
+// TODO vfunc instead of signal handler
+
 "use strict";
 
-const Clutter = imports.gi.Clutter;
-const Lang = imports.lang;
-const Meta = imports.gi.Meta;
-const St = imports.gi.St;
-
+const {Clutter, GObject, Meta, St} = imports.gi;
 const Main = imports.ui.main;
 
-const WindowButton = new Lang.Class({
-	Name: "WindowButton",
-
-	_init: function (metaWindow) {
+// A `WindowButton` is an StButton containing an StBoxLayout
+// with an StLabel and an StIcon
+let WindowButton = GObject.registerClass(
+class WindowButton extends St.Button {
+	_init(metaWindow) {
+		let itemBox = new St.BoxLayout();
+		super._init({
+			style_class: 'window-button',
+			can_focus: true,
+			button_mask: St.ButtonMask.ONE | St.ButtonMask.TWO,
+			child: itemBox
+		});
 		this.metaWindow = metaWindow;
-		// A `WindowButton` is actored by an StButton containing
-		// an StBoxLayout with an StLabel and an StBin
-		this._itemBox = new St.BoxLayout();
-		this.actor = new St.Button({ style_class: 'window-button',
-		                             can_focus: true,
-									 x_fill: true,
-									 y_fill:true,
-									 button_mask: St.ButtonMask.ONE |
-									              St.ButtonMask.TWO,
-		                             child: this._itemBox, });
-		this.actor._delegate = this;
-
-		// Window icon
-		this._icon = new St.Bin({ style_class: 'window-icon' });
-		this._itemBox.add(this._icon, {x_fill: false, y_fill: false});
+		// XXX What does x_align do here
+		this._icon = new St.Icon({style_class: 'window-icon',
+								 y_align: Clutter.ActorAlign.CENTER,
+								 fallback_icon_name: 'application-x-executable'});
+		itemBox.add(this._icon);
 		this._onIconChanged();
 
-		// Window name
-		this._label = new St.Label({style_class: 'window-label'});
-		this._itemBox.add(this._label, {x_fill: true,  y_fill: false});
+		this._label = new St.Label({style_class: 'window-label',
+									y_align: Clutter.ActorAlign.CENTER});
+		itemBox.add(this._label);
 		this._onTitleChanged();
 		this._onFocusChanged();
 
-		// Signals
-		let win = this.metaWindow;
+		this._ID_notify_title = this.metaWindow.connect(
+				'notify::title', this._onTitleChanged.bind(this));
+		this._ID_notify_icon = this.metaWindow.connect(
+				'notify::mini-icon', this._onIconChanged.bind(this));
+		this._ID_notify_minimize = this.metaWindow.connect(
+				'notify::minimized', this._onMinimizedChanged.bind(this));
+		this._ID_notify_focus = this.metaWindow.connect(
+				'notify::appears-focused', this._onFocusChanged.bind(this));
 
-		this._ID_notify_title = win.connect('notify::title',
-				Lang.bind(this, this._onTitleChanged));
-		this._ID_notify_icon = win.connect('notify::mini-icon',
-				Lang.bind(this, this._onIconChanged));
-		this._ID_notify_minimize = win.connect('notify::minimized',
-				Lang.bind(this, this._onMinimizedChanged));
-		this._ID_notify_focus = win.connect('notify::appears-focused',
-				Lang.bind(this, this._onFocusChanged));
+		this.connect(
+				'notify::allocation', this._onAllocationChanged.bind(this));
+		this.connect('clicked', this._onClicked.bind(this));
+		this.connect('destroy', this._onDestroy.bind(this));
+	}
 
-		this.actor.connect('allocation-changed',
-		        Lang.bind(this, this._onAllocationChanged));
-		this.actor.connect('clicked', Lang.bind(this, this._onClicked));
-		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
-	},
-
-	_onDestroy: function () {
+	_onDestroy() {
 		this.metaWindow.set_icon_geometry(null);
 		this.metaWindow.disconnect(this._ID_notify_title);
 		this.metaWindow.disconnect(this._ID_notify_icon);
 		this.metaWindow.disconnect(this._ID_notify_minimize);
 		this.metaWindow.disconnect(this._ID_notify_focus);
-	},
+	}
 
-	_onClicked: function (actor, button) {
+	_onClicked(actor, button) {
 		if (button === 1) {
 			if (this.metaWindow.has_focus())
 				this.metaWindow.minimize();
@@ -76,82 +69,73 @@ const WindowButton = new Lang.Class({
 		} else if (button === 2) {
 			this.metaWindow.delete(global.get_current_time());
 		}
-	},
+	}
 
-	_onAllocationChanged: function () {
+	_onAllocationChanged() {
 		let rect = new Meta.Rectangle();
 
-		[rect.x,     rect.y     ] = this.actor.get_transformed_position();
-		[rect.width, rect.height] = this.actor.get_transformed_size();
+		[rect.x,     rect.y     ] = this.get_transformed_position();
+		[rect.width, rect.height] = this.get_transformed_size();
 
 		this.metaWindow.set_icon_geometry(rect);
-	},
+	}
 
-	_onIconChanged: function () {
+	// XXX Check git history
+	_onIconChanged() {
 		let textureCache = St.TextureCache.get_default();
 		let icon = textureCache.bind_cairo_surface_property(
-			this.metaWindow, 'mini-icon');
+				this.metaWindow, 'mini-icon'); // mini-icons are 16 pixels?
+		// fucking undocumented APIs...
+		// TODO These icons look terrible. Why don't scaling filters work? 
 
-		icon.set_content_scaling_filters(
-			Clutter.ScalingFilter.TRILINEAR,
-			Clutter.ScalingFilter.LINEAR);
-		icon.set_content_gravity(Clutter.Gravity.NORTH_WEST);
-		icon.set_size(icon.get_width(), icon.get_height());
-		this._icon.destroy_all_children();
-		this._icon.set_child(icon);
-	},
+		this._icon.set_gicon(icon);
+	}
 
-	_onTitleChanged: function () {
+	_onTitleChanged() {
 		let formatString = this.metaWindow.minimized ? '[%s]' : '%s';
 		this._label.set_text(formatString.format(this.metaWindow.title));
-	},
+	}
 
-	_onMinimizedChanged: function () {
+	_onMinimizedChanged() {
 		this._icon.set_opacity(this.metaWindow.minimized ? 64 : 255);
 		this._onTitleChanged();
-	},
+	}
 
-	_onFocusChanged: function () {
-		if (this.metaWindow.has_focus()) {
-			this.actor.add_style_pseudo_class('focused');
-		} else {
-			this.actor.remove_style_pseudo_class('focused');
-		}
-	},
-
+	_onFocusChanged() {
+		if (this.metaWindow.has_focus())
+			this.add_style_pseudo_class('focused');
+		else
+			this.remove_style_pseudo_class('focused');
+	}
 });
 
-const WindowList = new Lang.Class({
-	Name: "WindowList",
-
-	_init: function () {
+let WindowList = GObject.registerClass(
+class WindowList extends St.BoxLayout {
+	_init() {
+		super._init({
+			name: 'windowList',
+			reactive: true });
 		this._workspace = global.workspace_manager.get_active_workspace();
-		this._windows = [];
-
-		this.actor = new St.BoxLayout({name: 'windowList',
-	                                   reactive: true});
-		this.actor._delegate = this;
 
 		this._reloadItems();
 
 		// Signals
-		this._ID_switch_workspace =
-				global.window_manager.connect('switch-workspace',
-						Lang.bind(this, this._onSwitchWorkspace));
+		this._ID_switch_workspace = global.window_manager.connect(
+				'switch-workspace', this._onSwitchWorkspace.bind(this));
 		this._onSwitchWorkspace();
 
-		this.actor.connect('scroll-event', Lang.bind(this, this._onScroll));
-		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
-	},
+		this.connect('scroll-event', this._onScroll.bind(this));
+		this.connect('destroy', this._onDestroy.bind(this));
+	}
 
-	_onDestroy: function () {
+	_onDestroy() {
 		global.window_manager.disconnect(this._ID_switch_workspace);
 
 		this._workspace.disconnect(this._ID_window_added);
 		this._workspace.disconnect(this._ID_window_removed);
-	},
+	}
 
-	_onSwitchWorkspace: function () {
+	_onSwitchWorkspace() {
 		// Start by disconnecting all signals from the old workspace
 		if (this._ID_window_added)
 			this._workspace.disconnect(this._ID_window_added);
@@ -161,36 +145,30 @@ const WindowList = new Lang.Class({
 		// Now connect the new signals
 		this._workspace = global.workspace_manager.get_active_workspace();
 
-		this._ID_window_added = this._workspace.connect('window-added',
-		        Lang.bind(this, this._windowAdded));
-		this._ID_window_removed = this._workspace.connect('window-removed',
-		        Lang.bind(this, this._windowRemoved));
+		this._ID_window_added = this._workspace.connect(
+				'window-added', this._windowAdded.bind(this));
+		this._ID_window_removed = this._workspace.connect(
+				'window-removed', this._windowRemoved.bind(this));
 		this._reloadItems();
-	},
+	}
 
-	_windowAdded: function (workspace, window) {
+	_windowAdded(workspace, win) {
 		if (workspace.index() !== global.workspace_manager.get_active_workspace_index())
 			return;
 
-		this._addWindow(window);
-	},
+		this._addWindow(win);
+	}
 
-	_windowRemoved: function (workspace, window) {
+	_windowRemoved(workspace, win) {
 		if (workspace.index() !== global.workspace_manager.get_active_workspace_index())
 			return;
 
-		for (let i = 0; i < this._windows.length; i++) {
-			let w = this._windows[i];
-			if (w.metaWindow === window) {
-				this.actor.remove_actor(w.actor);
-				w.actor.destroy();
-				this._windows.splice(i, 1);
-				break;
-			}
-		}
-	},
+		let child = this.get_children().find(w => w.metaWindow === win);
+		if (child)
+			child.destroy();
+	}
 
-	_onScroll: function (actor, event) {
+	_onScroll(actor, event) {
 		let diff = 0;
 		if (event.get_scroll_direction() === Clutter.ScrollDirection.DOWN)
 			diff = 1;
@@ -199,84 +177,66 @@ const WindowList = new Lang.Class({
 		else
 			return;
 
-		let focus_i = this._windows.findIndex(w => w.metaWindow.has_focus());
+		let children = this.get_children();
+		let focus_i = children.findIndex(w => w.metaWindow.has_focus());
 		if (focus_i === -1)
 			return;
 
-		let new_i = focus_i + diff;
-		if (new_i < 0)
-			new_i = 0;
-		else if (new_i >= this._windows.length)
-			new_i = this._windows.length - 1;
+		let new_i = Math.clamp(focus_i + diff, 0, children.length - 1);
+		children[new_i].metaWindow.activate(global.get_current_time());
+	}
 
-		this._windows[new_i].metaWindow.activate(global.get_current_time());
-	},
-
-	_addWindow: function (metaWindow) {
+	_addWindow(metaWindow) {
 		if (metaWindow.is_skip_taskbar())
 			return;
 
 		let button = new WindowButton(metaWindow);
-		this._windows.push(button);
-		this.actor.add(button.actor);
-	},
+		this.add(button);
+	}
 
-	_reloadItems: function () {
-		this.actor.destroy_all_children();
-		this._windows = [];
+	_reloadItems () {
+		this.destroy_all_children();
 
 		let metaWorkspace = global.workspace_manager.get_active_workspace();
 		let windows = metaWorkspace.list_windows();
-		windows.sort((a, b) => a.get_stable_sequence() - b.get_stable_sequence());
+		windows.sort(
+				(a, b) => a.get_stable_sequence() - b.get_stable_sequence());
 
 		windows.forEach(this._addWindow, this);
 	}
 });
 
-const BottomPanel = new Lang.Class({
-	Name: "BottomPanel",
-
-	_init: function () {
-		// Layout
-		this.actor = new St.BoxLayout({name: 'bottomPanel'});
-		this.actor._delegate = this;
+let BottomPanel = GObject.registerClass(
+class BottomPanel extends St.Bin { // XXX Could be St.Widget?
+	_init() {
+		super._init({ name: 'bottomPanel' }); // XXX reactive?
 
 		this._windowList = new WindowList();
-		this.actor.add(this._windowList.actor, {expand: true});
+		this.set_child(this._windowList);
 
 		// Signals
 		this._ID_monitors_changed = Meta.MonitorManager.get().connect(
-		        'monitors-changed', Lang.bind(this, this.relayout));
-		this._ID_overview_show = Main.overview.connect('showing',
-				Lang.bind(this, this._showOverview));
-		this._ID_overview_hide = Main.overview.connect('hidden',
-				Lang.bind(this,this._hideOverview));
+		        'monitors-changed', this.relayout.bind(this));
+		this._ID_overview_show = Main.overview.connect(
+				'showing', () => this.hide());
+		this._ID_overview_hide = Main.overview.connect(
+				'hidden', () => this.show());
 
-		this.actor.connect('style-changed', Lang.bind(this, this.relayout));
-		this.actor.connect('destroy', Lang.bind(this, this._onDestroy));
-	},
+		this.connect('style-changed', this.relayout.bind(this));
+		this.connect('destroy', this._onDestroy.bind(this));
+	}
 
-	relayout: function () {
+	relayout() {
 		let prim = Main.layoutManager.primaryMonitor;
-		let h = this.actor.get_theme_node().get_height();
+		let h = this.get_theme_node().get_height();
 
 		// Only with these precise measurements will windows snap to it
-		this.actor.set_position(prim.x, prim.y + prim.height - h);
-		this.actor.set_size(prim.width, -1);
-	},
+		this.set_position(prim.x, prim.y + prim.height - h);
+		this.set_size(prim.width, -1);
+	}
 
-	_showOverview: function () {
-		this.actor.hide();
-	},
-
-	_hideOverview: function () {
-		if (!Main.layoutManager.primaryMonitor.inFullscreen)
-			this.actor.show();
-	},
-
-	_onDestroy: function () {
+	_onDestroy() {
 		Meta.MonitorManager.get().disconnect(this._ID_monitors_changed);
-		Meta.MonitorManager.get().disconnect(this._ID_fullscreen_changed);
 		Main.overview.disconnect(this._ID_overview_show);
 		Main.overview.disconnect(this._ID_overview_hide);
 	}
@@ -284,23 +244,23 @@ const BottomPanel = new Lang.Class({
 
 let bottomPanel = null;
 
-function init(extensionMeta) {
+function init() {
 	return;
 }
 
 function enable() {
 	bottomPanel = new BottomPanel();
 
-	Main.layoutManager.addChrome(bottomPanel.actor, {affectsStruts: true,
-	                                                 trackFullscreen: true});
-	Main.ctrlAltTabManager.addGroup(bottomPanel.actor,
-	        "Bottom Bar", 'start-here-symbolic');
+	Main.layoutManager.addChrome(bottomPanel,
+			{affectsStruts: true, trackFullscreen: true});
+	Main.ctrlAltTabManager.addGroup(bottomPanel,
+			"Bottom Bar", 'start-here-symbolic');
 	bottomPanel.relayout();
 }
 
 function disable() {
-	Main.ctrlAltTabManager.removeGroup(bottomPanel.actor);
-	Main.layoutManager.removeChrome(bottomPanel.actor);
-	bottomPanel.actor.destroy();
+	Main.ctrlAltTabManager.removeGroup(bottomPanel);
+	Main.layoutManager.removeChrome(bottomPanel);
+	bottomPanel.destroy();
 	bottomPanel = null;
 }
