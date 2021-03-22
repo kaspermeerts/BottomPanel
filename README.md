@@ -12,13 +12,11 @@ between them.
 Features:
 ---
 
-+ Task bar with window list
-
-+ Message button to show/hide the messagetray
++ Taskbar with list of windows
 
 + Switch windows by scrolling
 
-+ Window options on right-click
++ Close windows with middle click
 
 Future plans include:
 ---
@@ -43,4 +41,4 @@ License
 This project is licensed under the terms of the GPL v2.0,
 see [http://www.gnu.org/licenses/gpl-2.0.html](http://www.gnu.org/licenses/gpl-2.0.html)
 
-Copyright (C) 2014 Kasper Maurice Meerts
+Copyright (C) 2021 Kasper Maurice Meerts
