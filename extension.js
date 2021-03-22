@@ -1,10 +1,8 @@
 // Bottom panel extension
-// Copyright (C) 2020 Kasper Maurice Meerts
+// Copyright (C) 2021 Kasper Maurice Meerts
 // License: GPLv2+
 // Many inspiration gotten from the extensions by
 // R.M. Yorston, gcampax and Mathematical Coffee
-
-// TODO vfunc instead of signal handler
 
 "use strict";
 
@@ -25,9 +23,11 @@ class WindowButton extends St.Button {
 		});
 		this.metaWindow = metaWindow;
 		// XXX What does x_align do here
-		this._icon = new St.Icon({style_class: 'window-icon',
-								 y_align: Clutter.ActorAlign.CENTER,
-								 fallback_icon_name: 'application-x-executable'});
+		this._icon = new St.Icon({
+			style_class: 'window-icon',
+			y_align: Clutter.ActorAlign.CENTER,
+			fallback_icon_name: 'application-x-executable'
+		});
 		itemBox.add(this._icon);
 		this._onIconChanged();
 
@@ -48,7 +48,6 @@ class WindowButton extends St.Button {
 
 		this.connect(
 				'notify::allocation', this._onAllocationChanged.bind(this));
-		this.connect('clicked', this._onClicked.bind(this));
 		this.connect('destroy', this._onDestroy.bind(this));
 	}
 
@@ -60,7 +59,7 @@ class WindowButton extends St.Button {
 		this.metaWindow.disconnect(this._ID_notify_focus);
 	}
 
-	_onClicked(actor, button) {
+	vfunc_clicked(button) {
 		if (button === 1) {
 			if (this.metaWindow.has_focus())
 				this.metaWindow.minimize();
@@ -117,14 +116,11 @@ class WindowList extends St.BoxLayout {
 			reactive: true });
 		this._workspace = global.workspace_manager.get_active_workspace();
 
-		this._reloadItems();
-
 		// Signals
 		this._ID_switch_workspace = global.window_manager.connect(
 				'switch-workspace', this._onSwitchWorkspace.bind(this));
 		this._onSwitchWorkspace();
 
-		this.connect('scroll-event', this._onScroll.bind(this));
 		this.connect('destroy', this._onDestroy.bind(this));
 	}
 
@@ -135,44 +131,11 @@ class WindowList extends St.BoxLayout {
 		this._workspace.disconnect(this._ID_window_removed);
 	}
 
-	_onSwitchWorkspace() {
-		// Start by disconnecting all signals from the old workspace
-		if (this._ID_window_added)
-			this._workspace.disconnect(this._ID_window_added);
-		if (this._ID_window_removed)
-			this._workspace.disconnect(this._ID_window_removed);
-
-		// Now connect the new signals
-		this._workspace = global.workspace_manager.get_active_workspace();
-
-		this._ID_window_added = this._workspace.connect(
-				'window-added', this._windowAdded.bind(this));
-		this._ID_window_removed = this._workspace.connect(
-				'window-removed', this._windowRemoved.bind(this));
-		this._reloadItems();
-	}
-
-	_windowAdded(workspace, win) {
-		if (workspace.index() !== global.workspace_manager.get_active_workspace_index())
-			return;
-
-		this._addWindow(win);
-	}
-
-	_windowRemoved(workspace, win) {
-		if (workspace.index() !== global.workspace_manager.get_active_workspace_index())
-			return;
-
-		let child = this.get_children().find(w => w.metaWindow === win);
-		if (child)
-			child.destroy();
-	}
-
-	_onScroll(actor, event) {
+	vfunc_scroll_event(scrollEvent) {
 		let diff = 0;
-		if (event.get_scroll_direction() === Clutter.ScrollDirection.DOWN)
+		if (scrollEvent.direction === Clutter.ScrollDirection.DOWN)
 			diff = 1;
-		else if (event.get_scroll_direction() === Clutter.ScrollDirection.UP)
+		else if (scrollEvent.direction === Clutter.ScrollDirection.UP)
 			diff = -1;
 		else
 			return;
@@ -186,12 +149,33 @@ class WindowList extends St.BoxLayout {
 		children[new_i].metaWindow.activate(global.get_current_time());
 	}
 
-	_addWindow(metaWindow) {
+	_onSwitchWorkspace() {
+		// Start by disconnecting all signals from the old workspace
+		if (this._ID_window_added)
+			this._workspace.disconnect(this._ID_window_added);
+		if (this._ID_window_removed)
+			this._workspace.disconnect(this._ID_window_removed);
+
+		// Now connect the new signals
+		this._workspace = global.workspace_manager.get_active_workspace();
+
+		this._ID_window_added = this._workspace.connect(
+				'window-added', this._addWindow.bind(this));
+		this._ID_window_removed = this._workspace.connect(
+				'window-removed', this._removeWindow.bind(this));
+		this._reloadItems();
+	}
+
+	_addWindow(workspace, metaWindow) {
 		if (metaWindow.is_skip_taskbar())
 			return;
 
 		let button = new WindowButton(metaWindow);
 		this.add(button);
+	}
+
+	_removeWindow(workspace, metaWindow) {
+		this.get_children().find(w => w.metaWindow === metaWindow)?.destroy();
 	}
 
 	_reloadItems () {
@@ -202,7 +186,7 @@ class WindowList extends St.BoxLayout {
 		windows.sort(
 				(a, b) => a.get_stable_sequence() - b.get_stable_sequence());
 
-		windows.forEach(this._addWindow, this);
+		windows.forEach(win => this._addWindow(metaWorkspace, win));
 	}
 });
 
@@ -210,6 +194,13 @@ let BottomPanel = GObject.registerClass(
 class BottomPanel extends St.Bin { // XXX Could be St.Widget?
 	_init() {
 		super._init({ name: 'bottomPanel' }); // XXX reactive?
+
+		this.set_offscreen_redirect(Clutter.OffscreenRedirect.ALWAYS);
+
+		Main.layoutManager.addChrome(this,
+				{affectsStruts: true, trackFullscreen: true});
+		Main.ctrlAltTabManager.addGroup(this,
+				"Bottom Bar", 'start-here-symbolic');
 
 		this._windowList = new WindowList();
 		this.set_child(this._windowList);
@@ -224,6 +215,16 @@ class BottomPanel extends St.Bin { // XXX Could be St.Widget?
 
 		this.connect('style-changed', this.relayout.bind(this));
 		this.connect('destroy', this._onDestroy.bind(this));
+		this.relayout();
+	}
+
+	_onDestroy() {
+		Main.layoutManager.removeChrome(this);
+		Main.ctrlAltTabManager.removeGroup(this);
+
+		Meta.MonitorManager.get().disconnect(this._ID_monitors_changed);
+		Main.overview.disconnect(this._ID_overview_show);
+		Main.overview.disconnect(this._ID_overview_hide);
 	}
 
 	relayout() {
@@ -233,12 +234,7 @@ class BottomPanel extends St.Bin { // XXX Could be St.Widget?
 		// Only with these precise measurements will windows snap to it
 		this.set_position(prim.x, prim.y + prim.height - h);
 		this.set_size(prim.width, -1);
-	}
-
-	_onDestroy() {
-		Meta.MonitorManager.get().disconnect(this._ID_monitors_changed);
-		Main.overview.disconnect(this._ID_overview_show);
-		Main.overview.disconnect(this._ID_overview_hide);
+		this._windowList._reloadItems();
 	}
 });
 
@@ -250,17 +246,9 @@ function init() {
 
 function enable() {
 	bottomPanel = new BottomPanel();
-
-	Main.layoutManager.addChrome(bottomPanel,
-			{affectsStruts: true, trackFullscreen: true});
-	Main.ctrlAltTabManager.addGroup(bottomPanel,
-			"Bottom Bar", 'start-here-symbolic');
-	bottomPanel.relayout();
 }
 
 function disable() {
-	Main.ctrlAltTabManager.removeGroup(bottomPanel);
-	Main.layoutManager.removeChrome(bottomPanel);
 	bottomPanel.destroy();
 	bottomPanel = null;
 }
