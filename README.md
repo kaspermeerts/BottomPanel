@@ -21,19 +21,7 @@ Features:
 Future plans include:
 ---
 
-+ Workspace switcher
-
 + Dragging and dropping windows
-
-+ Grouping windows of the same application
-
-+ Tooltips
-
-+ Autohide
-
-Screenshot
----
-![Screenshot](https://github.com/kmmeerts/BottomPanel/raw/master/screenshot.png)
 
 License
 ---

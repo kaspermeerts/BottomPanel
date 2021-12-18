@@ -1,7 +1,7 @@
 // Bottom panel extension
 // Copyright (C) 2021 Kasper Maurice Meerts
 // License: GPLv2+
-// Many inspiration gotten from the extensions by
+// Much inspiration gotten from the extensions by
 // R.M. Yorston, gcampax and Mathematical Coffee
 
 "use strict";
@@ -170,8 +170,7 @@ class WindowList extends St.BoxLayout {
 		if (metaWindow.is_skip_taskbar())
 			return;
 
-		let button = new WindowButton(metaWindow);
-		this.add(button);
+		this.add(new WindowButton(metaWindow));
 	}
 
 	_removeWindow(workspace, metaWindow) {
@@ -201,6 +200,7 @@ class BottomPanel extends St.Bin { // XXX Could be St.Widget?
 				{affectsStruts: true, trackFullscreen: true});
 		Main.ctrlAltTabManager.addGroup(this,
 				"Bottom Bar", 'start-here-symbolic');
+		//Main.uiGroup.set_child_above_sibling(this.actor, Main.layoutManager.panelBox);
 
 		this._windowList = new WindowList();
 		this.set_child(this._windowList);
@@ -228,7 +228,7 @@ class BottomPanel extends St.Bin { // XXX Could be St.Widget?
 	}
 
 	relayout() {
-		let prim = Main.layoutManager.primaryMonitor;
+		let prim = Main.layoutManager.primaryMonitor; // bottomMonitor?
 		let h = this.get_theme_node().get_height();
 
 		// Only with these precise measurements will windows snap to it
