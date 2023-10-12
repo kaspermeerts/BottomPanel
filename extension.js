@@ -1,21 +1,25 @@
 // Bottom panel extension
-// Copyright (C) 2021 Kasper Maurice Meerts
+// Copyright (C) 2023 Kasper Maurice Meerts
 // License: GPLv2+
 // Much inspiration gotten from the extensions by
 // R.M. Yorston, gcampax and Mathematical Coffee
 
-"use strict";
+import Clutter from 'gi://Clutter';
+import GObject from 'gi://GObject';
+import Mtk from 'gi://Mtk';
+import St from 'gi://St';
 
-const {Clutter, GObject, Meta, St} = imports.gi;
-const Main = imports.ui.main;
+import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 // A `WindowButton` is an StButton containing an StBoxLayout
 // with an StLabel and an StIcon
-let WindowButton = GObject.registerClass(
 class WindowButton extends St.Button {
-	_init(metaWindow) {
+	static { GObject.registerClass(this); }
+
+	constructor(metaWindow) {
 		let itemBox = new St.BoxLayout();
-		super._init({
+		super({
 			style_class: 'window-button',
 			can_focus: true,
 			button_mask: St.ButtonMask.ONE | St.ButtonMask.TWO,
@@ -37,14 +41,12 @@ class WindowButton extends St.Button {
 		this._onTitleChanged();
 		this._onFocusChanged();
 
-		this._ID_notify_title = this.metaWindow.connect(
-				'notify::title', this._onTitleChanged.bind(this));
-		this._ID_notify_icon = this.metaWindow.connect(
-				'notify::mini-icon', this._onIconChanged.bind(this));
-		this._ID_notify_minimize = this.metaWindow.connect(
-				'notify::minimized', this._onMinimizedChanged.bind(this));
-		this._ID_notify_focus = this.metaWindow.connect(
-				'notify::appears-focused', this._onFocusChanged.bind(this));
+		this.metaWindow.connectObject(
+			'notify::title', () => this._onTitleChanged(),
+			'notify::mini-icon', () => this._onIconChanged(),
+			'notify::minimized', () => this._onMinimizedChanged(),
+			'notify::appears-focused', () => this._onFocusChanged(),
+			this);
 
 		this.connect(
 				'notify::allocation', this._onAllocationChanged.bind(this));
@@ -53,10 +55,6 @@ class WindowButton extends St.Button {
 
 	_onDestroy() {
 		this.metaWindow.set_icon_geometry(null);
-		this.metaWindow.disconnect(this._ID_notify_title);
-		this.metaWindow.disconnect(this._ID_notify_icon);
-		this.metaWindow.disconnect(this._ID_notify_minimize);
-		this.metaWindow.disconnect(this._ID_notify_focus);
 	}
 
 	vfunc_clicked(button) {
@@ -71,7 +69,7 @@ class WindowButton extends St.Button {
 	}
 
 	_onAllocationChanged() {
-		let rect = new Meta.Rectangle();
+		let rect = new Mtk.Rectangle();
 
 		[rect.x,     rect.y     ] = this.get_transformed_position();
 		[rect.width, rect.height] = this.get_transformed_size();
@@ -106,36 +104,35 @@ class WindowButton extends St.Button {
 		else
 			this.remove_style_pseudo_class('focused');
 	}
-});
+}
 
-let WindowList = GObject.registerClass(
 class WindowList extends St.BoxLayout {
-	_init() {
-		super._init({
+	static { GObject.registerClass(this); }
+
+	constructor() {
+		super({
 			name: 'windowList',
 			reactive: true });
 		this._workspace = global.workspace_manager.get_active_workspace();
 
-		// Signals
-		this._ID_switch_workspace = global.window_manager.connect(
-				'switch-workspace', this._onSwitchWorkspace.bind(this));
+		global.window_manager.connectObject(
+			'switch-workspace', () => this._onSwitchWorkspace(),
+			this);
 		this._onSwitchWorkspace();
 
 		this.connect('destroy', this._onDestroy.bind(this));
 	}
 
 	_onDestroy() {
-		global.window_manager.disconnect(this._ID_switch_workspace);
-
 		this._workspace.disconnect(this._ID_window_added);
 		this._workspace.disconnect(this._ID_window_removed);
 	}
 
 	vfunc_scroll_event(scrollEvent) {
 		let diff = 0;
-		if (scrollEvent.direction === Clutter.ScrollDirection.DOWN)
+		if (scrollEvent.get_scroll_direction() === Clutter.ScrollDirection.DOWN)
 			diff = 1;
-		else if (scrollEvent.direction === Clutter.ScrollDirection.UP)
+		else if (scrollEvent.get_scroll_direction() === Clutter.ScrollDirection.UP)
 			diff = -1;
 		else
 			return;
@@ -150,13 +147,11 @@ class WindowList extends St.BoxLayout {
 	}
 
 	_onSwitchWorkspace() {
-		// Start by disconnecting all signals from the old workspace
 		if (this._ID_window_added)
 			this._workspace.disconnect(this._ID_window_added);
 		if (this._ID_window_removed)
 			this._workspace.disconnect(this._ID_window_removed);
 
-		// Now connect the new signals
 		this._workspace = global.workspace_manager.get_active_workspace();
 
 		this._ID_window_added = this._workspace.connect(
@@ -167,7 +162,7 @@ class WindowList extends St.BoxLayout {
 	}
 
 	_addWindow(workspace, metaWindow) {
-		if (metaWindow.is_skip_taskbar())
+		if (metaWindow.skip_taskbar)
 			return;
 
 		this.add(new WindowButton(metaWindow));
@@ -181,23 +176,24 @@ class WindowList extends St.BoxLayout {
 		this.destroy_all_children();
 
 		let metaWorkspace = global.workspace_manager.get_active_workspace();
-		let windows = metaWorkspace.list_windows();
-		windows.sort(
-				(a, b) => a.get_stable_sequence() - b.get_stable_sequence());
-
-		windows.forEach(win => this._addWindow(metaWorkspace, win));
+		metaWorkspace.list_windows()
+			.sort((a, b) => a.get_stable_sequence() - b.get_stable_sequence())
+			.forEach(win => this._addWindow(metaWorkspace, win));
 	}
-});
+}
 
-let BottomPanel = GObject.registerClass(
 class BottomPanel extends St.Bin { // XXX Could be St.Widget?
-	_init() {
-		super._init({ name: 'bottomPanel' }); // XXX reactive?
+	static { GObject.registerClass(this); }
+
+	constructor() {
+		super({ name: 'bottomPanel' }); // XXX reactive?
 
 		this.set_offscreen_redirect(Clutter.OffscreenRedirect.ALWAYS);
 
-		Main.layoutManager.addChrome(this,
-				{affectsStruts: true, trackFullscreen: true});
+		Main.layoutManager.addChrome(this, {
+			affectsStruts: true,
+			trackFullscreen: true
+		});
 		Main.ctrlAltTabManager.addGroup(this,
 				"Bottom Bar", 'start-here-symbolic');
 		//Main.uiGroup.set_child_above_sibling(this.actor, Main.layoutManager.panelBox);
@@ -206,12 +202,13 @@ class BottomPanel extends St.Bin { // XXX Could be St.Widget?
 		this.set_child(this._windowList);
 
 		// Signals
-		this._ID_monitors_changed = Meta.MonitorManager.get().connect(
-		        'monitors-changed', this.relayout.bind(this));
-		this._ID_overview_show = Main.overview.connect(
-				'showing', () => this.hide());
-		this._ID_overview_hide = Main.overview.connect(
-				'hidden', () => this.show());
+		global.backend.get_monitor_manager().connectObject(
+			'monitors-changed', () => this.relayout(),
+			this);
+		Main.overview.connectObject(
+			'showing', () => this.hide(),
+			'hidden', () => this.show(),
+			this);
 
 		this.connect('style-changed', this.relayout.bind(this));
 		this.connect('destroy', this._onDestroy.bind(this));
@@ -221,10 +218,6 @@ class BottomPanel extends St.Bin { // XXX Could be St.Widget?
 	_onDestroy() {
 		Main.layoutManager.removeChrome(this);
 		Main.ctrlAltTabManager.removeGroup(this);
-
-		Meta.MonitorManager.get().disconnect(this._ID_monitors_changed);
-		Main.overview.disconnect(this._ID_overview_show);
-		Main.overview.disconnect(this._ID_overview_hide);
 	}
 
 	relayout() {
@@ -236,19 +229,15 @@ class BottomPanel extends St.Bin { // XXX Could be St.Widget?
 		this.set_size(prim.width, -1);
 		this._windowList._reloadItems();
 	}
-});
-
-let bottomPanel = null;
-
-function init() {
-	return;
 }
 
-function enable() {
-	bottomPanel = new BottomPanel();
-}
+export default class BottomPanelExtension extends Extension {
+	enable() {
+		this._bottomPanel = new BottomPanel();
+	}
 
-function disable() {
-	bottomPanel.destroy();
-	bottomPanel = null;
+	disable() {
+		this._bottomPanel.destroy();
+		delete this._bottomPanel;
+	}
 }
