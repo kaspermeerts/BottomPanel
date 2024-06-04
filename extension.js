@@ -1,5 +1,4 @@
-// Bottom panel extension
-// Copyright (C) 2023 Kasper Maurice Meerts
+// Copyright (C) 2024 Kasper Maurice Meerts
 // License: GPLv2+
 // Much inspiration gotten from the extensions by
 // R.M. Yorston, gcampax and Mathematical Coffee
@@ -8,12 +7,13 @@ import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import Mtk from 'gi://Mtk';
 import St from 'gi://St';
+import Shell from 'gi://Shell';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 // A `WindowButton` is an StButton containing an StBoxLayout
-// with an StLabel and an StIcon
+// with an StLabel and an StBin (containing an StIcon)
 class WindowButton extends St.Button {
 	static { GObject.registerClass(this); }
 
@@ -26,31 +26,30 @@ class WindowButton extends St.Button {
 			child: itemBox
 		});
 		this.metaWindow = metaWindow;
-		// XXX What does x_align do here
-		this._icon = new St.Icon({
-			style_class: 'window-icon',
-			y_align: Clutter.ActorAlign.CENTER,
-			fallback_icon_name: 'application-x-executable'
-		});
-		itemBox.add(this._icon);
-		this._onIconChanged();
+
+		this._icon = new St.Bin({ style_class: 'window-icon' });
+		itemBox.add_child(this._icon);
 
 		this._label = new St.Label({style_class: 'window-label',
 									y_align: Clutter.ActorAlign.CENTER});
-		itemBox.add(this._label);
-		this._onTitleChanged();
-		this._onFocusChanged();
+		itemBox.add_child(this._label);
 
 		this.metaWindow.connectObject(
-			'notify::title', () => this._onTitleChanged(),
-			'notify::mini-icon', () => this._onIconChanged(),
-			'notify::minimized', () => this._onMinimizedChanged(),
-			'notify::appears-focused', () => this._onFocusChanged(),
+			'notify::wm-class',           () => this._onIconChanged(), GObject.ConnectFlags.AFTER,
+			'notify::gtk-application-id', () => this._onIconChanged(), GObject.ConnectFlags.AFTER,
+			'notify::mini-icon',          () => this._onIconChanged(), GObject.ConnectFlags.AFTER,
+			'notify::title',              () => this._onTitleChanged(),
+			'notify::minimized',          () => this._onMinimizedChanged(),
+			'notify::appears-focused',    () => this._onFocusChanged(),
 			this);
 
 		this.connect(
 				'notify::allocation', this._onAllocationChanged.bind(this));
 		this.connect('destroy', this._onDestroy.bind(this));
+
+		this._onTitleChanged();
+		this._onFocusChanged();
+		this._onIconChanged();
 	}
 
 	_onDestroy() {
@@ -77,15 +76,17 @@ class WindowButton extends St.Button {
 		this.metaWindow.set_icon_geometry(rect);
 	}
 
-	// XXX Check git history
 	_onIconChanged() {
-		let textureCache = St.TextureCache.get_default();
-		let icon = textureCache.bind_cairo_surface_property(
-				this.metaWindow, 'mini-icon'); // mini-icons are 16 pixels?
-		// fucking undocumented APIs...
-		// TODO These icons look terrible. Why don't scaling filters work? 
+		let app = Shell.WindowTracker.get_default().get_window_app(this.metaWindow);
 
-		this._icon.set_gicon(icon);
+		if (app) {
+			this._icon.child = app.create_icon_texture(24);
+		} else {
+			this._icon.child = new St.Icon({
+				icon_name: 'application-x-executable',
+				icon_size: 24
+			});
+		}
 	}
 
 	_onTitleChanged() {
@@ -112,7 +113,10 @@ class WindowList extends St.BoxLayout {
 	constructor() {
 		super({
 			name: 'windowList',
-			reactive: true });
+			reactive: true,
+			x_align: Clutter.ActorAlign.START,
+			x_expand: true,
+			y_expand: true});
 		this._workspace = global.workspace_manager.get_active_workspace();
 
 		global.window_manager.connectObject(
@@ -165,7 +169,7 @@ class WindowList extends St.BoxLayout {
 		if (metaWindow.skip_taskbar)
 			return;
 
-		this.add(new WindowButton(metaWindow));
+		this.add_child(new WindowButton(metaWindow));
 	}
 
 	_removeWindow(workspace, metaWindow) {
